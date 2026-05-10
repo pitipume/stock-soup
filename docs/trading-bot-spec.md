@@ -56,15 +56,19 @@ The kill switch: if total portfolio drops 10% from its high-water mark, the bot:
 
 ## Strategies (implement in this order)
 
-### 1. RSI Mean Reversion (start here)
+### 1. RSI Mean Reversion ✓ IMPLEMENTED
 - Signal: RSI < 30 = oversold (long) · RSI > 70 = overbought (short)
-- Simplest to implement, easiest to understand and debug
-- Works well in ranging markets
+- Stop: 1× ATR below/above entry · Take profit: 2× risk (1:2 R:R)
+- File: `backend/app/modules/bot/strategies/rsi.py`
 
-### 2. MACD + EMA Trend Following
-- Signal: MACD line crosses signal line in direction of EMA trend
-- Adds momentum confirmation to RSI
-- Works well in trending markets
+### 2. MACD + EMA Trend Following ✓ IMPLEMENTED
+- Signal: MACD line crosses signal line IN the direction of the EMA-200 trend
+  - Price > EMA + MACD bullish cross → LONG
+  - Price < EMA + MACD bearish cross → SHORT
+  - Prevents counter-trend entries (main weakness of RSI alone)
+- Stop: 1× ATR · Take profit: 2× risk
+- File: `backend/app/modules/bot/strategies/macd.py`
+- Switch via: `PATCH /bot/config {"active_strategy": "macd"}`
 
 ### 3. Fibonacci Retracement
 - Identify recent swing high/low

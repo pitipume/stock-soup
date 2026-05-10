@@ -109,9 +109,7 @@ class BinanceClient:
     async def get_price(self, symbol: str) -> float:
         """Latest mark price for a symbol (e.g. BTCUSDT)."""
         if self._stub:
-            # Realistic stub prices for common pairs
-            stubs = {"BTCUSDT": 65_000.0, "ETHUSDT": 3_200.0, "SOLUSDT": 145.0}
-            return stubs.get(symbol, 100.0)
+            return _STUB_PRICES.get(symbol, 100.0)
 
         data = await self._get("/fapi/v1/premiumIndex", params={"symbol": symbol})
         return float(data["markPrice"])
@@ -122,7 +120,7 @@ class BinanceClient:
         Returns list of dicts with keys: open_time, open, high, low, close, volume.
         """
         if self._stub:
-            return _stub_klines(limit)
+            return _stub_klines(limit, symbol)
 
         raw = await self._get(
             "/fapi/v1/klines",
@@ -226,10 +224,13 @@ class BinanceClient:
 
 # ── Stub helpers ──────────────────────────────────────────────────────────────
 
-def _stub_klines(n: int) -> list[dict]:
+_STUB_PRICES: dict[str, float] = {"BTCUSDT": 65_000.0, "ETHUSDT": 3_200.0, "SOLUSDT": 145.0}
+
+
+def _stub_klines(n: int, symbol: str = "BTCUSDT") -> list[dict]:
     """Generate synthetic trending candles for strategy testing."""
     import random
-    price = 65_000.0
+    price = _STUB_PRICES.get(symbol, 100.0)
     candles = []
     t = int(time.time() * 1000) - n * 60_000
     for _ in range(n):
