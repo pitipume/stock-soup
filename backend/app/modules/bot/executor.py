@@ -18,7 +18,6 @@ from app.config import settings
 from app.models.bot import BotConfig, Position, PortfolioSnapshot
 from app.modules.bot.binance_client import BinanceClient
 from app.modules.bot.risk import approve_trade, check_drawdown
-from app.modules.bot.strategies.rsi import Signal
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,7 @@ async def execute_signal(
     db: AsyncSession,
     client: BinanceClient,
     symbol: str,
-    signal: Signal,
+    signal,   # any strategy Signal dataclass — all share .action / .entry_price / .stop_loss / .take_profit
     strategy: str,
 ) -> None:
     """Attempt to open a position based on an approved signal."""

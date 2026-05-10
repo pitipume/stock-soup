@@ -31,7 +31,9 @@ logger = logging.getLogger(__name__)
 # Symbols the bot monitors — extend this list to add more markets
 _SYMBOLS = ["BTCUSDT", "ETHUSDT"]
 _TIMEFRAME = "15m"
-_CANDLE_LIMIT = 100
+# 250 because MACD with EMA-200 needs at least 205 candles before it can fire.
+# All other strategies need far fewer, but we fetch once for all of them.
+_CANDLE_LIMIT = 250
 
 
 @celery_app.task(bind=True, name="tasks.run_bot_cycle")
