@@ -40,6 +40,15 @@ def run_bot_cycle(self):
     asyncio.run(_execute_bot_cycle())
 
 
+@celery_app.task(bind=True, name="tasks.sync_positions")
+def sync_positions(self):
+    """
+    Poll Binance every minute to detect closed positions (SL/TP filled).
+    Moves closed positions from positions table → trades table with P&L.
+    """
+    asyncio.run(_sync_closed_positions())
+
+
 async def _execute_bot_cycle():
     async with BinanceClient() as client:
         async with AsyncSessionLocal() as db:
@@ -80,3 +89,104 @@ async def _check_symbol(client: BinanceClient, symbol: str, strategy: str, param
         async with AsyncSessionLocal() as db:
             async with BinanceClient() as exec_client:
                 await execute_signal(db, exec_client, symbol, signal, strategy)
+
+
+async def _sync_closed_positions():
+    """
+    For each open Position in DB, check if Binance still has it open.
+    If not, calculate P&L and record a Trade.
+
+    In stub mode: randomly close ~10% of positions per cycle to simulate SL/TP hits.
+    """
+    from app.models.bot import Position, Trade
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+    import random
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Position).where(Position.trading_mode == settings.trading_mode)
+        )
+        positions = result.scalars().all()
+
+        if not positions:
+            return
+
+        async with BinanceClient() as client:
+            for pos in positions:
+                closed = await _is_position_closed(client, pos)
+                if not closed:
+                    continue
+
+                exit_price = await client.get_price(pos.symbol)
+                pnl_usdt, pnl_pct, outcome, close_reason = _calc_pnl(pos, exit_price)
+
+                trade = Trade(
+                    trading_mode=pos.trading_mode,
+                    symbol=pos.symbol,
+                    side=pos.side,
+                    size=pos.size,
+                    entry_price=pos.entry_price,
+                    exit_price=exit_price,
+                    stop_loss=pos.stop_loss,
+                    take_profit=pos.take_profit,
+                    pnl_usdt=pnl_usdt,
+                    pnl_pct=pnl_pct,
+                    outcome=outcome,
+                    strategy=pos.strategy,
+                    close_reason=close_reason,
+                    opened_at=pos.opened_at,
+                )
+                db.add(trade)
+                await db.delete(pos)
+                logger.info(
+                    f"Position closed: {pos.symbol} {pos.side} | "
+                    f"P&L={pnl_usdt:+.2f} USDT ({outcome})"
+                )
+
+        await db.commit()
+
+
+async def _is_position_closed(client: BinanceClient, pos) -> bool:
+    """Return True if the position has been closed on Binance."""
+    if client.is_stub:
+        # Stub: 10% chance per check that the position closes (simulates SL/TP)
+        import random
+        return random.random() < 0.10
+
+    try:
+        data = await client._get(
+            "/fapi/v2/positionRisk",
+            params={"symbol": pos.symbol},
+            signed=True,
+        )
+        for p in data:
+            if p["symbol"] == pos.symbol:
+                return float(p["positionAmt"]) == 0.0
+    except Exception as e:
+        logger.error(f"Failed to check position {pos.symbol}: {e}")
+    return False
+
+
+def _calc_pnl(pos, exit_price: float) -> tuple[float, float, str, str]:
+    """Calculate P&L and determine outcome and close reason."""
+    if pos.side == "long":
+        pnl_usdt = (exit_price - pos.entry_price) * pos.size * pos.leverage
+        hit_tp = exit_price >= pos.take_profit
+        hit_sl = exit_price <= pos.stop_loss
+    else:
+        pnl_usdt = (pos.entry_price - exit_price) * pos.size * pos.leverage
+        hit_tp = exit_price <= pos.take_profit
+        hit_sl = exit_price >= pos.stop_loss
+
+    pnl_pct = pnl_usdt / (pos.entry_price * pos.size) * 100
+    outcome = "win" if pnl_usdt > 0 else ("loss" if pnl_usdt < 0 else "breakeven")
+
+    if hit_tp:
+        close_reason = "take_profit"
+    elif hit_sl:
+        close_reason = "stop_loss"
+    else:
+        close_reason = "manual"
+
+    return round(pnl_usdt, 4), round(pnl_pct, 4), outcome, close_reason

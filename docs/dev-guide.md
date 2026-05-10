@@ -33,7 +33,7 @@ cp .env.example .env
 docker-compose up -d
 
 # 4. Watch logs
-docker-compose logs -f backend worker
+docker-compose logs -f backend worker beat
 ```
 
 ---
@@ -47,8 +47,11 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 # Backend logs
 docker-compose logs -f backend
 
-# Worker logs (see scan progress)
+# Worker logs (see scan progress + bot trades)
 docker-compose logs -f worker
+
+# Beat logs (see scheduled task firings)
+docker-compose logs -f beat
 
 # Open shell in backend container
 docker-compose exec backend bash
@@ -90,6 +93,17 @@ docker-compose exec frontend sh
 2. Decorate with `@celery_app.task`
 3. Add the module to `include` in `celery_app.py` if new file
 4. Call with `.delay(args)` from your router
+
+For scheduled (periodic) tasks, add an entry to `beat_schedule` in `celery_app.py`:
+```python
+beat_schedule={
+    "my-task-every-5-minutes": {
+        "task": "tasks.my_task_name",
+        "schedule": 300,
+    },
+}
+```
+The `beat` Docker service handles firing these — no code change needed to the worker.
 
 ---
 

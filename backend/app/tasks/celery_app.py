@@ -20,5 +20,9 @@ celery_app.conf.update(
             "task": "tasks.run_bot_cycle",
             "schedule": 300,  # seconds
         },
+        "sync-positions-every-minute": {
+            "task": "tasks.sync_positions",
+            "schedule": 60,  # seconds
+        },
     },
 )
