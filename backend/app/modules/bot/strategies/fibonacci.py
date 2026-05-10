@@ -29,7 +29,7 @@ Default params:
   min_move_pct      float = 1.0   — ignore swings smaller than this % (avoids noise)
 """
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Optional
 
 
 _FIB_RATIOS = [0.382, 0.500, 0.618]
@@ -101,7 +101,7 @@ def _fib_levels(swing_high: float, swing_low: float, uptrend: bool) -> list[FibL
     return levels
 
 
-def evaluate(candles: list[dict], params: dict | None = None) -> Signal:
+def evaluate(candles: list[dict], params: Optional[dict] = None) -> Signal:
     """
     Given OHLCV candles (newest last), return a Fibonacci retracement signal.
 
@@ -146,7 +146,7 @@ def evaluate(candles: list[dict], params: dict | None = None) -> Signal:
     levels = _fib_levels(swing_high, swing_low, uptrend)
 
     # Find the closest Fib level to current price
-    closest: FibLevel | None = None
+    closest: Optional[FibLevel] = None
     closest_dist = float("inf")
     for lvl in levels:
         dist_pct = abs(entry - lvl.price) / entry * 100
