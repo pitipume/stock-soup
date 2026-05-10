@@ -38,7 +38,7 @@ Default params:
 """
 import math
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 
 @dataclass
@@ -116,7 +116,7 @@ def _squeeze_history(
 
 # ── Public evaluate ───────────────────────────────────────────────────────────
 
-def evaluate(candles: list[dict], params: dict | None = None) -> Signal:
+def evaluate(candles: list[dict], params: Optional[dict] = None) -> Signal:
     """
     Given OHLCV candles (newest last), return a Bollinger Band Squeeze signal.
 

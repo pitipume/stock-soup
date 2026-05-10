@@ -73,6 +73,54 @@ async def _execute_bot_cycle():
             await _check_symbol(client, symbol, config.active_strategy, config.strategy_params)
 
 
+async def _fetch_strategy_weights(
+    trading_mode: str,
+    min_trades: int = 5,
+    lookback_days: int = 30,
+) -> dict:
+    """
+    Query the trades table for each strategy's recent win rate.
+    Returns a dict like {"rsi": 0.62, "macd": 0.48, ...}.
+
+    Strategies with fewer than min_trades records default to 0.5 (neutral).
+    This prevents a lucky early trade from over-weighting a strategy before
+    it has enough data to be statistically meaningful.
+    """
+    from app.models.bot import Trade
+    from sqlalchemy import select, func, case
+    from datetime import datetime, timezone, timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(
+                Trade.strategy,
+                func.count().label("total"),
+                func.sum(
+                    case((Trade.outcome == "win", 1), else_=0)
+                ).label("wins"),
+            )
+            .where(Trade.trading_mode == trading_mode)
+            .where(Trade.opened_at >= cutoff)
+            .group_by(Trade.strategy)
+        )
+        rows = result.all()
+
+    weights = {}
+    for row in rows:
+        if row.total >= min_trades:
+            weights[row.strategy] = round(row.wins / row.total, 4)
+        else:
+            weights[row.strategy] = 0.5
+
+    for strat in ["rsi", "macd", "fibonacci", "bollinger", "elliott_wave"]:
+        weights.setdefault(strat, 0.5)
+
+    logger.debug(f"Strategy weights ({lookback_days}d, mode={trading_mode}): {weights}")
+    return weights
+
+
 async def _check_symbol(client: BinanceClient, symbol: str, strategy: str, params: dict):
     candles = await client.get_klines(symbol, _TIMEFRAME, _CANDLE_LIMIT)
 
@@ -88,6 +136,22 @@ async def _check_symbol(client: BinanceClient, symbol: str, strategy: str, param
     elif strategy == "bollinger":
         from app.modules.bot.strategies.bollinger import evaluate
         signal = evaluate(candles, params)
+    elif strategy == "elliott_wave":
+        from app.modules.bot.strategies.elliott_wave import evaluate
+        signal = evaluate(candles, params)
+    elif strategy == "combined":
+        from app.modules.bot.strategies.combined import evaluate
+        weights = await _fetch_strategy_weights(settings.trading_mode)
+        # Merge live weights into user params — user params take precedence if set explicitly
+        merged = {
+            "rsi_weight":          weights["rsi"],
+            "macd_weight":         weights["macd"],
+            "fibonacci_weight":    weights["fibonacci"],
+            "bollinger_weight":    weights["bollinger"],
+            "elliott_wave_weight": weights["elliott_wave"],
+        }
+        merged.update(params or {})
+        signal = evaluate(candles, merged)
     else:
         logger.warning(f"Unknown strategy '{strategy}' — skipping {symbol}")
         return

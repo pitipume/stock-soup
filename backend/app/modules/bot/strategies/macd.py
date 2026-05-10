@@ -18,7 +18,7 @@ Stop loss:  1 ATR below entry (long) / above entry (short)
 Take profit: 2× risk distance (1:2 R:R, matching spec minimum)
 """
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 
 @dataclass
@@ -86,7 +86,7 @@ def compute_atr(candles: list[dict], period: int = 14) -> float:
     return sum(trs[-period:]) / min(len(trs), period)
 
 
-def evaluate(candles: list[dict], params: dict | None = None) -> Signal:
+def evaluate(candles: list[dict], params: Optional[dict] = None) -> Signal:
     """
     Given OHLCV candles (newest last), return a trading signal.
 

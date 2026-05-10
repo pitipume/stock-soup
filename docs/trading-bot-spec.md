@@ -91,14 +91,31 @@ The kill switch: if total portfolio drops 10% from its high-water mark, the bot:
 - File: `backend/app/modules/bot/strategies/bollinger.py`
 - Switch via: `PATCH /bot/config {"active_strategy": "bollinger"}`
 
-### 5. Elliott Wave + Fibonacci Confluence
-- Most complex — requires wave counting logic
-- Build last, after simpler strategies are proven
+### 5. Elliott Wave + Fibonacci Confluence ✓ IMPLEMENTED
+- Identifies the start of Wave 3 — the strongest impulse in EWT
+- Pivot detection: N-bar confirmed swing highs/lows (not running extremes)
+- Wave structure: finds most recent W0→W1→W2 sequence from confirmed pivots
+- EWT Rule A: W2 must NOT exceed W0 (hard invalidation)
+- EWT Rule B: W2 retracement must be 23.6%–78.6% of W1
+- Entry: price breaks away from W2 in the W1 direction (W3 starting)
+- Stop: W2 extreme ± 0.5× ATR (EWT rule — if W3 breaks W1 start, count is wrong)
+- Take profit: 161.8% Fibonacci extension of W1 measured from W2
+- Golden zone (38.2%–61.8% retracement) flagged in signal reason
+- File: `backend/app/modules/bot/strategies/elliott_wave.py`
+- Switch via: `PATCH /bot/config {"active_strategy": "elliott_wave"}`
 
-### 6. Combined Score (the real edge)
-- Weighted composite of multiple signals
-- Weight each strategy by its recent win rate in current market regime
-- This is what separates the bot from simple signal following
+### 6. Combined Score ✓ IMPLEMENTED
+- Runs all 5 sub-strategies on every candle simultaneously
+- Each strategy's vote is weighted by its recent win rate (fetched from `trades` table, last 30 days)
+- Default weight = 0.5 when fewer than 5 trades exist for a strategy (prevents over-fitting on lucky early trades)
+- `long_score = Σ weight_i` for strategies firing LONG; `short_score = Σ weight_i` for SHORT
+- Fires LONG if: `long_score >= threshold` AND `short_score <= conflict_max` (opposing score small enough)
+- `conflict_max` guard prevents trading when strong strategies disagree (e.g. RSI long vs MACD short)
+- SL/TP comes from the "anchor" — the highest-weighted strategy that voted for the winning direction
+- As testnet data accumulates, weights shift automatically toward strategies that are working now
+- File: `backend/app/modules/bot/strategies/combined.py`
+- Switch via: `PATCH /bot/config {"active_strategy": "combined"}`
+- Key params: `threshold` (default 0.3), `conflict_max` (default 0.15)
 
 ---
 

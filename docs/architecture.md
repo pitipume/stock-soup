@@ -148,7 +148,12 @@ modules/bot/
 ├── router.py           — REST endpoints: /bot/status, /portfolio, /positions, /trades, /stats
 ├── schemas.py          — Pydantic schemas
 └── strategies/
-    └── rsi.py          — RSI mean-reversion: RSI<30=long, RSI>70=short, ATR-based stops
+    ├── rsi.py          — RSI mean-reversion: RSI<30=long, RSI>70=short, ATR-based stops
+    ├── macd.py         — MACD + EMA-200 trend filter: cross must align with trend direction
+    ├── fibonacci.py    — Fib retracement: entry within 0.5% of 38.2/50/61.8% levels
+    ├── bollinger.py    — BB squeeze: squeeze + breakout + volume confirmation (3-gate)
+    ├── elliott_wave.py — EWT W3 entry: confirmed pivots, W2 retracement 23.6–78.6%, 161.8% target
+    └── combined.py     — Weighted vote across all 5 strategies; weights from DB win rates
 ```
 
 ---
