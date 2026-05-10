@@ -82,6 +82,9 @@ async def _check_symbol(client: BinanceClient, symbol: str, strategy: str, param
     elif strategy == "macd":
         from app.modules.bot.strategies.macd import evaluate
         signal = evaluate(candles, params)
+    elif strategy == "fibonacci":
+        from app.modules.bot.strategies.fibonacci import evaluate
+        signal = evaluate(candles, params)
     else:
         logger.warning(f"Unknown strategy '{strategy}' — skipping {symbol}")
         return

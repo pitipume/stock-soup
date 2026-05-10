@@ -70,10 +70,15 @@ The kill switch: if total portfolio drops 10% from its high-water mark, the bot:
 - File: `backend/app/modules/bot/strategies/macd.py`
 - Switch via: `PATCH /bot/config {"active_strategy": "macd"}`
 
-### 3. Fibonacci Retracement
-- Identify recent swing high/low
-- Enter at key retracement levels: 38.2%, 50%, 61.8%
-- Stop just beyond the level (invalidation point)
+### 3. Fibonacci Retracement ✓ IMPLEMENTED
+- Find swing high and swing low in last 50 candles; whichever came last sets the trend
+- Uptrend: price retraces to 38.2%, 50%, 61.8% (from swing_low→high) → LONG
+- Downtrend: price bounces to 38.2%, 50%, 61.8% (from swing_high→low) → SHORT
+- Entry when price is within 0.5% of a Fib level
+- Stop: 0.5× ATR beyond the level (invalidation point)
+- Take profit: 2× risk
+- File: `backend/app/modules/bot/strategies/fibonacci.py`
+- Switch via: `PATCH /bot/config {"active_strategy": "fibonacci"}`
 
 ### 4. Bollinger Band Squeeze
 - Low volatility (band squeeze) → anticipate breakout
