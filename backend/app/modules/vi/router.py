@@ -32,6 +32,27 @@ async def list_scans(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+@router.get("/stocks/{ticker}", response_model=ScanResultOut)
+async def get_stock(ticker: str, db: AsyncSession = Depends(get_db)):
+    """Latest scan result for a single ticker."""
+    result = await db.execute(
+        select(ScanResult)
+        .where(ScanResult.ticker == ticker.upper())
+        .order_by(ScanResult.created_at.desc())
+        .limit(1)
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"No scan data for {ticker.upper()}")
+    return ScanResultOut(
+        ticker=row.ticker,
+        company_name=row.company_name,
+        vi_score=row.vi_score,
+        verdict=row.verdict,
+        metrics=VIMetrics(**row.metrics),
+    )
+
+
 @router.get("/scans/{scan_id}", response_model=ScanWithResults)
 async def get_scan(scan_id: int, db: AsyncSession = Depends(get_db)):
     """Get a scan with its full results, sorted by VI score."""

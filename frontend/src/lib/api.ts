@@ -43,4 +43,5 @@ export const viApi = {
   startScan: () => api<Scan>("/vi/scan", { method: "POST" }),
   listScans: () => api<Scan[]>("/vi/scans"),
   getScan: (id: number) => api<Scan>(`/vi/scans/${id}`),
+  getStock: (ticker: string) => api<ScanResult>(`/vi/stocks/${ticker}`),
 };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { viApi, type Scan, type ScanResult } from "@/lib/api";
 
@@ -67,7 +68,9 @@ function ResultsTable({ results }: { results: ScanResult[] }) {
           {results.map((r) => (
             <tr key={r.ticker} className="hover:bg-zinc-900/50 transition-colors">
               <td className="px-4 py-3 font-mono font-bold text-emerald-400">
-                {r.ticker}
+                <Link href={`/vi/${r.ticker}`} className="hover:underline">
+                  {r.ticker}
+                </Link>
               </td>
               <td className="px-4 py-3 text-zinc-300 max-w-[200px] truncate">
                 {r.company_name}
