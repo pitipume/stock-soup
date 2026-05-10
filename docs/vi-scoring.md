@@ -83,16 +83,13 @@ and has good coverage of US stocks (S&P 500 + NASDAQ-100).
 
 ## Scan universe
 
-Phase 1 scans **S&P 500 + NASDAQ-100** (~600 unique tickers after dedup).
+Phase 1 scans ~200 hand-curated US tickers covering S&P 500 + NASDAQ-100 major constituents across all sectors (tech, financials, healthcare, consumer, energy, industrials, utilities).
 
-Universe is fetched from Wikipedia tables at scan time. If Wikipedia fetch fails,
-a hardcoded fallback list of 27 major tickers is used (for offline dev/testing).
+The list lives in `screener.py → _US_UNIVERSE`. Wikipedia scraping was dropped because Cloudflare blocks Docker container IPs. The static list is updated manually when index constituents change significantly.
 
 **Why not all US stocks?**
 
-Scanning all 8,000+ US equities would take 4-6 hours and hit Yahoo Finance
-rate limits. S&P 500 + NASDAQ-100 covers the most liquid, data-complete stocks
-and is where institutional money tracks performance. Phase 3 can expand this.
+Scanning all 8,000+ US equities would take 4-6 hours and hit Yahoo Finance rate limits. ~200 liquid, data-complete stocks cover the most institutional-quality names. Phase 3 can expand this with a smarter caching layer.
 
 ---
 

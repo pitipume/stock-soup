@@ -111,9 +111,9 @@ VI Scanner only:
 
 Do NOT add bot or lab features yet. Phase 1 = working VI scanner first.
 
-## Known issues (as of 2026-05-07)
+## Known issues (as of 2026-05-10)
 
-- **Yahoo Finance 429 rate limiting in Docker** — yfinance is blocked by Cloudflare in containerized environments. Scans run but return 0 results. Next session: either run the worker on the host machine or switch data source. See `docs/dev-guide.md` → Known Issues.
+- **Wikipedia scraping blocked in Docker** — Cloudflare 403s on Wikipedia ticker lists. Resolved by using a static `_US_UNIVERSE` list (~200 tickers) in `screener.py`. Update the list manually when index constituents change significantly.
 
 ## What NOT to do
 

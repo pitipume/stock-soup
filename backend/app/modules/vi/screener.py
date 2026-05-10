@@ -8,79 +8,58 @@ import logging
 import time
 from typing import Optional
 
-import pandas as pd
 import yfinance as yf
 
 from app.modules.vi.scorer import score_stock
 
 logger = logging.getLogger(__name__)
 
-_SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-_NASDAQ100_URL = "https://en.wikipedia.org/wiki/Nasdaq-100"
-
-# Fallback list for when Wikipedia fetch fails (dev/offline use)
-_FALLBACK_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "BRK-B",
-    "JPM", "JNJ", "V", "PG", "MA", "HD", "UNH", "DIS", "BAC", "XOM",
-    "ABBV", "PFE", "WMT", "CVX", "KO", "PEP", "MRK", "TMO", "AVGO",
+# Static universe — S&P 500 + NASDAQ-100 representative tickers.
+# Wikipedia scraping is blocked by Cloudflare in Docker environments.
+# This list is updated manually and covers the major constituents.
+_US_UNIVERSE = [
+    # Mega-cap tech
+    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "NVDA", "AVGO", "ORCL",
+    "AMD", "INTC", "QCOM", "TXN", "MU", "AMAT", "LRCX", "KLAC", "MRVL", "ADBE",
+    "CRM", "NOW", "INTU", "PANW", "CRWD", "SNOW", "PLTR", "NET", "DDOG", "ZS",
+    # Financials
+    "BRK-B", "JPM", "BAC", "WFC", "GS", "MS", "C", "AXP", "BLK", "SCHW",
+    "COF", "USB", "PNC", "TFC", "MTB", "FITB", "HBAN", "CFG", "KEY", "RF",
+    "V", "MA", "PYPL", "FIS", "FISV", "GPN", "SQ", "ICE", "CME", "CBOE",
+    # Healthcare
+    "LLY", "UNH", "JNJ", "ABBV", "MRK", "PFE", "AMGN", "GILD", "BIIB", "REGN",
+    "TMO", "ABT", "MDT", "SYK", "BSX", "EW", "ISRG", "ZBH", "BDX", "BAX",
+    "CVS", "CI", "HUM", "CNC", "MOH", "ELV", "HCA", "THC", "DVA", "DGX",
+    # Consumer
+    "WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "NKE", "TJX", "ROST",
+    "KO", "PEP", "PG", "UL", "CL", "KMB", "GIS", "K", "HSY", "MKC",
+    "AMZN", "EBAY", "ETSY", "W", "CHWY", "DASH", "UBER", "LYFT", "ABNB", "BKNG",
+    # Energy
+    "XOM", "CVX", "COP", "EOG", "SLB", "OXY", "PSX", "VLO", "MPC", "HES",
+    "PXD", "DVN", "FANG", "APA", "HAL", "BKR", "MRO", "OKE", "WMB", "KMI",
+    # Industrials
+    "GE", "CAT", "DE", "HON", "LMT", "RTX", "NOC", "GD", "BA", "LHX",
+    "UPS", "FDX", "CSX", "NSC", "UNP", "DAL", "UAL", "AAL", "LUV", "ALK",
+    "MMM", "EMR", "ETN", "PH", "ROK", "IR", "XYL", "GWW", "FAST", "MSC",
+    # Real estate / utilities / other
+    "AMT", "PLD", "EQIX", "CCI", "SPG", "O", "WELL", "AVB", "EQR", "DRE",
+    "NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "PEG", "ED", "ES",
+    "BRK-B", "LIN", "APD", "SHW", "ECL", "PPG", "NEM", "FCX", "AA", "CLF",
 ]
 
 
 def fetch_us_universe() -> list[str]:
-    tickers: set[str] = set()
-
-    try:
-        sp500_df = pd.read_html(_SP500_URL)[0]
-        tickers.update(sp500_df["Symbol"].tolist())
-        logger.info(f"Fetched {len(tickers)} S&P 500 tickers")
-    except Exception as e:
-        logger.warning(f"S&P 500 fetch failed: {e}")
-
-    try:
-        nasdaq_tables = pd.read_html(_NASDAQ100_URL)
-        # The ticker column location varies — search all tables
-        for table in nasdaq_tables:
-            if "Ticker" in table.columns:
-                tickers.update(table["Ticker"].dropna().tolist())
-                break
-        logger.info(f"Total universe after NASDAQ-100: {len(tickers)}")
-    except Exception as e:
-        logger.warning(f"NASDAQ-100 fetch failed: {e}")
-
-    if not tickers:
-        logger.warning("Using fallback ticker list")
-        return _FALLBACK_TICKERS
-
-    return sorted(tickers)
-
-
-_SESSION = None
-
-
-def _get_session():
-    """
-    Shared requests session with browser-like headers.
-    Yahoo Finance blocks default Python user agents aggressively in cloud/Docker environments.
-    """
-    global _SESSION
-    if _SESSION is None:
-        import requests
-        _SESSION = requests.Session()
-        _SESSION.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "application/json",
-        })
-    return _SESSION
+    # Deduplicate and sort
+    tickers = sorted(set(_US_UNIVERSE))
+    logger.info(f"Universe: {len(tickers)} tickers (static list)")
+    return tickers
 
 
 def _fetch_ticker_data(ticker: str, retries: int = 2) -> Optional[dict]:
     for attempt in range(retries + 1):
         try:
-            t = yf.Ticker(ticker, session=_get_session())
+            # Let yfinance manage its own curl_cffi session — required in newer versions
+            t = yf.Ticker(ticker)
             info = t.info
             if not info or (not info.get("regularMarketPrice") and not info.get("currentPrice")):
                 return None

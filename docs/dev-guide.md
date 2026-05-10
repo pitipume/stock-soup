@@ -192,18 +192,9 @@ docker stats
 
 ## Known issues
 
-### Yahoo Finance 429 rate limiting in Docker (Phase 1 blocker)
+### Wikipedia ticker fetch returns 403 in Docker
 
-**Symptom:** Worker logs show `429 Too Many Requests` for every ticker. Scans complete with 0 results.
-
-**Root cause:** Yahoo Finance uses Cloudflare protection that blocks non-browser HTTP clients. Docker container IPs get flagged immediately because they have no cookie session. yfinance 0.2.50 has an open issue for this.
-
-**Workaround options (pick one for next session):**
-1. Run the Celery worker on your HOST machine (not in Docker) where your browser's Yahoo Finance cookies exist
-2. Upgrade yfinance: `pip install yfinance --upgrade` — newer versions have improved crumb handling
-3. Switch to a free alternative: [Alpha Vantage](https://www.alphavantage.co/) (500 req/day free) or [Financial Modeling Prep](https://financialmodelingprep.com/) (250 req/day free) — both have Python clients and return fundamentals
-
-**Priority:** Fix before Phase 1 can be considered done. The architecture handles the fix cleanly — only `screener.py` needs to change.
+**Status: Resolved** — switched to static `_US_UNIVERSE` list in `screener.py` (~200 tickers). Cloudflare blocks Wikipedia HTML scraping from Docker IPs. The static list covers S&P 500 + NASDAQ-100 major constituents and is maintained manually.
 
 ---
 
