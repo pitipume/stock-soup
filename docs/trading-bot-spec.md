@@ -80,9 +80,16 @@ The kill switch: if total portfolio drops 10% from its high-water mark, the bot:
 - File: `backend/app/modules/bot/strategies/fibonacci.py`
 - Switch via: `PATCH /bot/config {"active_strategy": "fibonacci"}`
 
-### 4. Bollinger Band Squeeze
-- Low volatility (band squeeze) → anticipate breakout
-- Enter on breakout direction with volume confirmation
+### 4. Bollinger Band Squeeze ✓ IMPLEMENTED
+- Three conditions must all fire together:
+  1. SQUEEZE — band width in bottom 20% of last 50 candles (coiled energy)
+  2. BREAKOUT — close above upper band (long) or below lower band (short)
+  3. VOLUME — current volume > 1× average (confirms conviction, rejects fakeouts)
+- The squeeze must have fired within the last 5 candles (prevents chasing old moves)
+- Stop: middle band (SMA20), capped at 2× ATR — if price falls back to mean, setup failed
+- Take profit: 2× risk
+- File: `backend/app/modules/bot/strategies/bollinger.py`
+- Switch via: `PATCH /bot/config {"active_strategy": "bollinger"}`
 
 ### 5. Elliott Wave + Fibonacci Confluence
 - Most complex — requires wave counting logic
