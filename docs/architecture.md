@@ -74,7 +74,7 @@ POST /vi/scan
         │
         ▼ (background, in Celery worker)
 run_vi_scan_task(scan_id)
-  → fetch_us_universe()      ← Wikipedia scrape (S&P 500 + NASDAQ-100)
+  → fetch_us_universe()      ← static list ~200 tickers (S&P 500 + NASDAQ-100)
   → run_vi_scan(tickers)     ← yfinance per-ticker, ~500 calls
        └── score_stock(metrics)  ← VI scoring algorithm
   → Save ScanResult rows to DB
@@ -103,6 +103,32 @@ GET /vi/scans/{id}
 
 ---
 
+## Data flow: Trading Bot (Phase 2)
+
+```
+Celery Beat triggers run_bot_cycle every 5 min
+        │
+        ▼
+_execute_bot_cycle()
+  → Record PortfolioSnapshot (balance, equity, drawdown)
+  → check_drawdown() — if > 10%, trigger kill switch
+  → For each symbol in _SYMBOLS (BTCUSDT, ETHUSDT):
+       → get_klines() from Binance (or stub)
+       → RSI strategy evaluate(candles) → Signal
+       → If signal != "none":
+            → approve_trade() — risk checks (suspended?, concurrent limit, position size)
+            → If approved: set_leverage → place_order → set_stop_loss → set_take_profit
+            → Write Position to DB
+        │
+        ▼ (kill switch path)
+_trigger_kill_switch()
+  → Close all open positions at market price
+  → Set BotConfig.is_suspended = True
+  → Manual resume required from UI (POST /bot/resume)
+```
+
+---
+
 ## Module boundaries
 
 Each module (`vi`, `bot`, `lab`) is fully self-contained:
@@ -112,6 +138,18 @@ Each module (`vi`, `bot`, `lab`) is fully self-contained:
 - `scorer.py` / `strategies/` — domain algorithms
 
 No cross-module imports. Shared infra (DB session, config) comes from `app/database.py` and `app/config.py`.
+
+### Bot module structure
+```
+modules/bot/
+├── binance_client.py   — Binance Futures API wrapper (testnet/live routing + stub mode)
+├── executor.py         — Signal → risk check → order placement → DB write
+├── risk.py             — Position sizing, drawdown check, concurrent position gate
+├── router.py           — REST endpoints: /bot/status, /portfolio, /positions, /trades, /stats
+├── schemas.py          — Pydantic schemas
+└── strategies/
+    └── rsi.py          — RSI mean-reversion: RSI<30=long, RSI>70=short, ATR-based stops
+```
 
 ---
 

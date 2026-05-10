@@ -45,3 +45,71 @@ export const viApi = {
   getScan: (id: number) => api<Scan>(`/vi/scans/${id}`),
   getStock: (ticker: string) => api<ScanResult>(`/vi/stocks/${ticker}`),
 };
+
+// ── Bot types ──────────────────────────────────────────────────────────────
+
+export interface BotStatus {
+  is_suspended: boolean;
+  suspension_reason: string | null;
+  active_strategy: string;
+  strategy_params: Record<string, unknown>;
+  trading_mode: string;
+  is_stub: boolean;
+}
+
+export interface Portfolio {
+  balance_usdt: number;
+  equity_usdt: number;
+  high_water_mark: number;
+  drawdown_pct: number;
+  trading_mode: string;
+  is_stub: boolean;
+}
+
+export interface Position {
+  id: number;
+  symbol: string;
+  side: string;
+  size: number;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  leverage: number;
+  strategy: string;
+  opened_at: string;
+}
+
+export interface Trade {
+  id: number;
+  symbol: string;
+  side: string;
+  size: number;
+  entry_price: number;
+  exit_price: number;
+  pnl_usdt: number;
+  pnl_pct: number;
+  outcome: string;
+  strategy: string;
+  close_reason: string;
+  opened_at: string;
+  closed_at: string;
+}
+
+export interface TradeStats {
+  total_trades: number;
+  win_rate_pct: number;
+  avg_pnl_usdt: number;
+  total_pnl_usdt: number;
+  avg_rr: number;
+}
+
+export const botApi = {
+  getStatus: () => api<BotStatus>("/bot/status"),
+  getPortfolio: () => api<Portfolio>("/bot/portfolio"),
+  getPositions: () => api<Position[]>("/bot/positions"),
+  getTrades: (limit = 50) => api<Trade[]>(`/bot/trades?limit=${limit}`),
+  getStats: () => api<TradeStats>("/bot/stats"),
+  resume: () => api<BotStatus>("/bot/resume", { method: "POST" }),
+  updateConfig: (body: { active_strategy?: string; strategy_params?: Record<string, unknown> }) =>
+    api<BotStatus>("/bot/config", { method: "PATCH", body: JSON.stringify(body) }),
+};
