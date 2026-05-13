@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { botApi, type BotStatus, type Portfolio, type Position, type Trade, type TradeStats, type PortfolioSnapshot } from "@/lib/api";
+import { botApi, type BotStatus, type Portfolio, type Position, type Trade, type TradeStats, type PortfolioSnapshot, type StrategyStats } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number, decimals = 2) {
@@ -25,16 +25,32 @@ const STRATEGIES = ["rsi", "macd", "fibonacci", "bollinger", "elliott_wave", "co
 
 // ── Status banner ─────────────────────────────────────────────────────────────
 function StatusBanner({ status }: { status: BotStatus }) {
+  const qc = useQueryClient();
+  const resume = useMutation({
+    mutationFn: botApi.resume,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bot-status"] }),
+  });
+  const suspend = useMutation({
+    mutationFn: botApi.suspend,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bot-status"] }),
+  });
+
   if (status.is_suspended) {
     return (
       <div className="rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-red-400">Bot Suspended — Kill Switch Active</p>
+          <p className="text-sm font-semibold text-red-400">Bot Suspended</p>
           {status.suspension_reason && (
             <p className="text-xs text-red-500 mt-0.5">{status.suspension_reason}</p>
           )}
         </div>
-        <ResumeButton />
+        <button
+          onClick={() => resume.mutate()}
+          disabled={resume.isPending}
+          className="px-3 py-1.5 text-xs font-semibold bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors disabled:opacity-50"
+        >
+          {resume.isPending ? "Resuming…" : "Resume Bot"}
+        </button>
       </div>
     );
   }
@@ -50,27 +66,17 @@ function StatusBanner({ status }: { status: BotStatus }) {
           </span>
         )}
       </p>
-      <span className="ml-auto text-xs text-zinc-500 uppercase tracking-wider">
+      <span className="ml-auto text-xs text-zinc-500 uppercase tracking-wider mr-3">
         {status.trading_mode}
       </span>
+      <button
+        onClick={() => suspend.mutate()}
+        disabled={suspend.isPending}
+        className="px-3 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-red-900/60 border border-zinc-700 hover:border-red-800 text-zinc-400 hover:text-red-300 rounded transition-colors disabled:opacity-50"
+      >
+        {suspend.isPending ? "Pausing…" : "⏸ Pause"}
+      </button>
     </div>
-  );
-}
-
-function ResumeButton() {
-  const qc = useQueryClient();
-  const resume = useMutation({
-    mutationFn: botApi.resume,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bot-status"] }),
-  });
-  return (
-    <button
-      onClick={() => resume.mutate()}
-      disabled={resume.isPending}
-      className="px-3 py-1.5 text-xs font-semibold bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors disabled:opacity-50"
-    >
-      {resume.isPending ? "Resuming…" : "Resume Bot"}
-    </button>
   );
 }
 
@@ -348,6 +354,8 @@ function PositionsTable({ positions }: { positions: Position[] }) {
             <th className="px-4 py-3 text-left">Side</th>
             <th className="px-4 py-3 text-right">Size</th>
             <th className="px-4 py-3 text-right">Entry</th>
+            <th className="px-4 py-3 text-right">Now</th>
+            <th className="px-4 py-3 text-right">Unreal. P&amp;L</th>
             <th className="px-4 py-3 text-right">Stop</th>
             <th className="px-4 py-3 text-right">Target</th>
             <th className="px-4 py-3 text-right">Lev</th>
@@ -371,12 +379,84 @@ function PositionsTable({ positions }: { positions: Position[] }) {
                 </span>
               </td>
               <td className="px-4 py-3 text-right font-mono">{p.size}</td>
-              <td className="px-4 py-3 text-right font-mono">{fmt(p.entry_price)}</td>
+              <td className="px-4 py-3 text-right font-mono text-zinc-300">{fmt(p.entry_price)}</td>
+              <td className="px-4 py-3 text-right font-mono text-zinc-400">
+                {p.current_price != null ? fmt(p.current_price) : "—"}
+              </td>
+              <td className={`px-4 py-3 text-right font-mono font-semibold ${
+                p.unrealized_pnl == null
+                  ? "text-zinc-600"
+                  : p.unrealized_pnl >= 0
+                    ? "text-emerald-400"
+                    : "text-red-400"
+              }`}>
+                {p.unrealized_pnl == null
+                  ? "—"
+                  : `${p.unrealized_pnl >= 0 ? "+" : ""}${fmtUSDT(p.unrealized_pnl)}`}
+              </td>
               <td className="px-4 py-3 text-right font-mono text-red-400">{fmt(p.stop_loss)}</td>
               <td className="px-4 py-3 text-right font-mono text-emerald-400">{fmt(p.take_profit)}</td>
               <td className="px-4 py-3 text-right text-zinc-400">{p.leverage}×</td>
               <td className="px-4 py-3 text-zinc-400 uppercase text-xs">{p.strategy}</td>
               <td className="px-4 py-3 text-zinc-500 text-xs">{fmtDate(p.opened_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Strategy breakdown ────────────────────────────────────────────────────────
+function StrategyBreakdown({ rows }: { rows: StrategyStats[] }) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-6 text-center text-sm text-zinc-600">
+        No trades yet — breakdown appears after first closed trade
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-zinc-800">
+      <table className="w-full text-sm">
+        <thead className="bg-zinc-900 text-xs text-zinc-500 uppercase tracking-wider">
+          <tr>
+            <th className="px-4 py-3 text-left">Strategy</th>
+            <th className="px-4 py-3 text-right">Trades</th>
+            <th className="px-4 py-3 text-right">W / L</th>
+            <th className="px-4 py-3 text-right">Win Rate</th>
+            <th className="px-4 py-3 text-right">Total P&amp;L</th>
+            <th className="px-4 py-3 text-right">Avg P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-800">
+          {rows.map((r) => (
+            <tr key={r.strategy} className="hover:bg-zinc-900/50">
+              <td className="px-4 py-3 font-semibold text-zinc-200 uppercase text-xs tracking-wide">
+                {r.strategy.replace("_", " ")}
+              </td>
+              <td className="px-4 py-3 text-right text-zinc-400">{r.total_trades}</td>
+              <td className="px-4 py-3 text-right font-mono text-xs">
+                <span className="text-emerald-400">{r.wins}</span>
+                <span className="text-zinc-600"> / </span>
+                <span className="text-red-400">{r.losses}</span>
+              </td>
+              <td className={`px-4 py-3 text-right font-semibold ${
+                r.win_rate_pct >= 55 ? "text-emerald-400" : r.win_rate_pct >= 45 ? "text-amber-400" : "text-red-400"
+              }`}>
+                {fmtPct(r.win_rate_pct)}
+              </td>
+              <td className={`px-4 py-3 text-right font-mono font-semibold ${
+                r.total_pnl_usdt >= 0 ? "text-emerald-400" : "text-red-400"
+              }`}>
+                {r.total_pnl_usdt >= 0 ? "+" : ""}{fmtUSDT(r.total_pnl_usdt)}
+              </td>
+              <td className={`px-4 py-3 text-right font-mono ${
+                r.avg_pnl_usdt >= 0 ? "text-emerald-400" : "text-red-400"
+              }`}>
+                {r.avg_pnl_usdt >= 0 ? "+" : ""}{fmtUSDT(r.avg_pnl_usdt)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -556,6 +636,12 @@ export default function BotPage() {
     refetchInterval: 30_000,
   });
 
+  const { data: strategyStats = [] } = useQuery({
+    queryKey: ["bot-stats-by-strategy"],
+    queryFn: botApi.getStatsByStrategy,
+    refetchInterval: 60_000,
+  });
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
@@ -580,6 +666,13 @@ export default function BotPage() {
           Open Positions ({positions.length} / 3)
         </h2>
         <PositionsTable positions={positions} />
+      </div>
+
+      <div>
+        <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+          Strategy Breakdown
+        </h2>
+        <StrategyBreakdown rows={strategyStats} />
       </div>
 
       <div>

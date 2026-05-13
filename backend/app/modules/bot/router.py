@@ -17,6 +17,7 @@ from app.modules.bot.schemas import (
     TradeOut,
     PortfolioOut,
     TradeStatsOut,
+    StrategyStatsOut,
     BotConfigUpdateIn,
     PortfolioSnapshotOut,
 )
@@ -109,15 +110,68 @@ async def get_portfolio(db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.post("/suspend", response_model=BotStatusOut)
+async def suspend_bot(db: AsyncSession = Depends(get_db)):
+    """Manually pause the bot. Does NOT close positions — use Resume to restart."""
+    config = await _get_or_create_config(db)
+    config.is_suspended = True
+    config.suspension_reason = "Manually suspended via UI"
+    await db.commit()
+    await db.refresh(config)
+    async with BinanceClient() as client:
+        stub = client.is_stub
+    return BotStatusOut(
+        is_suspended=config.is_suspended,
+        suspension_reason=config.suspension_reason,
+        active_strategy=config.active_strategy,
+        strategy_params=config.strategy_params,
+        trading_mode=settings.trading_mode,
+        is_stub=stub,
+    )
+
+
 @router.get("/positions", response_model=list[PositionOut])
 async def get_positions(db: AsyncSession = Depends(get_db)):
-    """All currently open positions."""
+    """Open positions enriched with live price and unrealized P&L from Binance."""
     result = await db.execute(
         select(Position)
         .where(Position.trading_mode == settings.trading_mode)
         .order_by(Position.opened_at.desc())
     )
-    return result.scalars().all()
+    positions = result.scalars().all()
+
+    prices: dict[str, float] = {}
+    async with BinanceClient() as client:
+        for symbol in {p.symbol for p in positions}:
+            try:
+                prices[symbol] = await client.get_price(symbol)
+            except Exception:
+                pass
+
+    out = []
+    for pos in positions:
+        price = prices.get(pos.symbol)
+        pnl = None
+        if price is not None:
+            if pos.side == "long":
+                pnl = (price - pos.entry_price) * pos.size * pos.leverage
+            else:
+                pnl = (pos.entry_price - price) * pos.size * pos.leverage
+        out.append(PositionOut(
+            id=pos.id,
+            symbol=pos.symbol,
+            side=pos.side,
+            size=pos.size,
+            entry_price=pos.entry_price,
+            stop_loss=pos.stop_loss,
+            take_profit=pos.take_profit,
+            leverage=pos.leverage,
+            strategy=pos.strategy,
+            opened_at=pos.opened_at,
+            current_price=round(price, 4) if price is not None else None,
+            unrealized_pnl=round(pnl, 2) if pnl is not None else None,
+        ))
+    return out
 
 
 @router.get("/trades", response_model=list[TradeOut])
@@ -169,6 +223,35 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         total_pnl_usdt=round(total_pnl, 2),
         avg_rr=round(avg_rr, 2),
     )
+
+
+@router.get("/stats/by-strategy", response_model=list[StrategyStatsOut])
+async def get_stats_by_strategy(db: AsyncSession = Depends(get_db)):
+    """Per-strategy breakdown: trade count, win rate, and P&L."""
+    result = await db.execute(
+        select(Trade).where(Trade.trading_mode == settings.trading_mode)
+    )
+    trades = result.scalars().all()
+
+    groups: dict[str, list] = {}
+    for t in trades:
+        groups.setdefault(t.strategy, []).append(t)
+
+    out = []
+    for strategy, ts in sorted(groups.items(), key=lambda x: len(x[1]), reverse=True):
+        wins = sum(1 for t in ts if t.outcome == "win")
+        losses = sum(1 for t in ts if t.outcome == "loss")
+        total_pnl = sum(t.pnl_usdt for t in ts)
+        out.append(StrategyStatsOut(
+            strategy=strategy,
+            total_trades=len(ts),
+            wins=wins,
+            losses=losses,
+            win_rate_pct=round(wins / len(ts) * 100, 1),
+            total_pnl_usdt=round(total_pnl, 2),
+            avg_pnl_usdt=round(total_pnl / len(ts), 2),
+        ))
+    return out
 
 
 @router.get("/portfolio/history", response_model=list[PortfolioSnapshotOut])

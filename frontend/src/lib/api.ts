@@ -77,6 +77,18 @@ export interface Position {
   leverage: number;
   strategy: string;
   opened_at: string;
+  current_price: number | null;
+  unrealized_pnl: number | null;
+}
+
+export interface StrategyStats {
+  strategy: string;
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate_pct: number;
+  total_pnl_usdt: number;
+  avg_pnl_usdt: number;
 }
 
 export interface Trade {
@@ -117,8 +129,10 @@ export const botApi = {
   getPositions: () => api<Position[]>("/bot/positions"),
   getTrades: (limit = 50) => api<Trade[]>(`/bot/trades?limit=${limit}`),
   getStats: () => api<TradeStats>("/bot/stats"),
+  getStatsByStrategy: () => api<StrategyStats[]>("/bot/stats/by-strategy"),
   getPortfolioHistory: (limit = 288) => api<PortfolioSnapshot[]>(`/bot/portfolio/history?limit=${limit}`),
   resume: () => api<BotStatus>("/bot/resume", { method: "POST" }),
+  suspend: () => api<BotStatus>("/bot/suspend", { method: "POST" }),
   trigger: () => api<{ task_id: string; status: string }>("/bot/trigger", { method: "POST" }),
   updateConfig: (body: { active_strategy?: string; strategy_params?: Record<string, unknown> }) =>
     api<BotStatus>("/bot/config", { method: "PATCH", body: JSON.stringify(body) }),

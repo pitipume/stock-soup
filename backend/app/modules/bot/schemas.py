@@ -22,9 +22,8 @@ class PositionOut(BaseModel):
     leverage: int
     strategy: str
     opened_at: datetime
-
-    class Config:
-        from_attributes = True
+    current_price: float | None = None
+    unrealized_pnl: float | None = None
 
 
 class TradeOut(BaseModel):
@@ -61,6 +60,16 @@ class TradeStatsOut(BaseModel):
     avg_pnl_usdt: float
     total_pnl_usdt: float
     avg_rr: float
+
+
+class StrategyStatsOut(BaseModel):
+    strategy: str
+    total_trades: int
+    wins: int
+    losses: int
+    win_rate_pct: float
+    total_pnl_usdt: float
+    avg_pnl_usdt: float
 
 
 class BotConfigUpdateIn(BaseModel):
