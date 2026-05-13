@@ -18,6 +18,7 @@ from app.modules.bot.schemas import (
     PortfolioOut,
     TradeStatsOut,
     BotConfigUpdateIn,
+    PortfolioSnapshotOut,
 )
 
 router = APIRouter()
@@ -168,3 +169,24 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         total_pnl_usdt=round(total_pnl, 2),
         avg_rr=round(avg_rr, 2),
     )
+
+
+@router.get("/portfolio/history", response_model=list[PortfolioSnapshotOut])
+async def get_portfolio_history(db: AsyncSession = Depends(get_db), limit: int = 288):
+    """Portfolio snapshots ordered oldest-first for charting (default: last 24h at 5-min intervals)."""
+    result = await db.execute(
+        select(PortfolioSnapshot)
+        .where(PortfolioSnapshot.trading_mode == settings.trading_mode)
+        .order_by(PortfolioSnapshot.recorded_at.desc())
+        .limit(limit)
+    )
+    snaps = result.scalars().all()
+    return list(reversed(snaps))
+
+
+@router.post("/trigger")
+async def trigger_cycle():
+    """Manually fire a bot cycle. Useful for testing without waiting for the 5-min schedule."""
+    from app.tasks.celery_app import celery_app
+    task = celery_app.send_task("tasks.run_bot_cycle")
+    return {"task_id": task.id, "status": "queued"}

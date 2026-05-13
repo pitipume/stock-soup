@@ -66,3 +66,14 @@ class TradeStatsOut(BaseModel):
 class BotConfigUpdateIn(BaseModel):
     active_strategy: str | None = None
     strategy_params: dict | None = None
+
+
+class PortfolioSnapshotOut(BaseModel):
+    id: int
+    equity_usdt: float
+    high_water_mark: float
+    drawdown_pct: float
+    recorded_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { botApi, type BotStatus, type Portfolio, type Position, type Trade, type TradeStats } from "@/lib/api";
+import { botApi, type BotStatus, type Portfolio, type Position, type Trade, type TradeStats, type PortfolioSnapshot } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number, decimals = 2) {
@@ -16,6 +17,11 @@ function fmtPct(n: number) {
 function fmtDate(s: string) {
   return new Date(s).toLocaleString();
 }
+function fmtTime(s: string) {
+  return new Date(s).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+const STRATEGIES = ["rsi", "macd", "fibonacci", "bollinger", "elliott_wave", "combined"] as const;
 
 // ── Status banner ─────────────────────────────────────────────────────────────
 function StatusBanner({ status }: { status: BotStatus }) {
@@ -55,9 +61,7 @@ function ResumeButton() {
   const qc = useQueryClient();
   const resume = useMutation({
     mutationFn: botApi.resume,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["bot-status"] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bot-status"] }),
   });
   return (
     <button
@@ -67,6 +71,196 @@ function ResumeButton() {
     >
       {resume.isPending ? "Resuming…" : "Resume Bot"}
     </button>
+  );
+}
+
+// ── Strategy panel ────────────────────────────────────────────────────────────
+function StrategyPanel({ status }: { status: BotStatus }) {
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState(status.active_strategy);
+  const [saved, setSaved] = useState(false);
+
+  const update = useMutation({
+    mutationFn: (s: string) => botApi.updateConfig({ active_strategy: s }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bot-status"] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  const trigger = useMutation({
+    mutationFn: botApi.trigger,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bot-positions"] }),
+  });
+
+  const isDirty = selected !== status.active_strategy;
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-4 flex flex-wrap items-center gap-3">
+      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Strategy</p>
+      <select
+        value={selected}
+        onChange={(e) => { setSelected(e.target.value); setSaved(false); }}
+        className="flex-1 min-w-[160px] bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm rounded px-3 py-1.5 focus:outline-none focus:border-emerald-600"
+      >
+        {STRATEGIES.map((s) => (
+          <option key={s} value={s}>
+            {s === "elliott_wave" ? "Elliott Wave" : s.charAt(0).toUpperCase() + s.slice(1)}
+          </option>
+        ))}
+      </select>
+      <button
+        onClick={() => update.mutate(selected)}
+        disabled={!isDirty || update.isPending}
+        className="px-3 py-1.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-40"
+      >
+        {saved ? "Saved ✓" : update.isPending ? "Saving…" : "Save"}
+      </button>
+      <div className="ml-auto">
+        <button
+          onClick={() => trigger.mutate()}
+          disabled={trigger.isPending}
+          className="px-3 py-1.5 text-xs font-semibold bg-zinc-700 hover:bg-zinc-600 text-zinc-100 rounded transition-colors disabled:opacity-50"
+        >
+          {trigger.isPending ? "Running…" : "▶ Run Now"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Equity curve (SVG) ────────────────────────────────────────────────────────
+function EquityCurve({ snapshots }: { snapshots: PortfolioSnapshot[] }) {
+  if (snapshots.length < 2) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-6 text-center text-sm text-zinc-600">
+        Equity curve builds as the bot runs — check back after a few cycles
+      </div>
+    );
+  }
+
+  const W = 800;
+  const H = 160;
+  const PAD = { top: 10, right: 16, bottom: 28, left: 68 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+
+  const equities = snapshots.map((s) => s.equity_usdt);
+  const rawMin = Math.min(...equities);
+  const rawMax = Math.max(...equities);
+  const pad = (rawMax - rawMin) * 0.12 || rawMax * 0.02;
+  const minEq = rawMin - pad;
+  const maxEq = rawMax + pad;
+  const eqRange = maxEq - minEq;
+
+  const times = snapshots.map((s) => new Date(s.recorded_at).getTime());
+  const minT = times[0];
+  const maxT = times[times.length - 1];
+  const tRange = maxT - minT || 1;
+
+  const cx = (i: number) => PAD.left + ((times[i] - minT) / tRange) * plotW;
+  const cy = (eq: number) => PAD.top + (1 - (eq - minEq) / eqRange) * plotH;
+
+  const linePath = snapshots
+    .map((s, i) => `${i === 0 ? "M" : "L"}${cx(i).toFixed(1)},${cy(s.equity_usdt).toFixed(1)}`)
+    .join(" ");
+
+  const fillPath =
+    linePath +
+    ` L${cx(snapshots.length - 1).toFixed(1)},${(PAD.top + plotH).toFixed(1)}` +
+    ` L${PAD.left},${(PAD.top + plotH).toFixed(1)} Z`;
+
+  const hwm = Math.max(...snapshots.map((s) => s.high_water_mark));
+  const hwmY = cy(hwm);
+  const killLevel = hwm * 0.9;
+  const killY = cy(Math.max(killLevel, minEq));
+
+  // Y axis ticks (3)
+  const yTicks = [0, 0.5, 1].map((t) => ({
+    y: PAD.top + (1 - t) * plotH,
+    label: fmtUSDT(minEq + t * eqRange),
+  }));
+
+  // X axis ticks (up to 4)
+  const xTickCount = Math.min(4, snapshots.length);
+  const xTicks = Array.from({ length: xTickCount }, (_, i) => {
+    const idx = Math.round((i / (xTickCount - 1)) * (snapshots.length - 1));
+    return { x: cx(idx), label: fmtTime(snapshots[idx].recorded_at) };
+  });
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-4">
+      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+        Equity Curve ({snapshots.length} snapshots)
+      </p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+        {/* Kill zone fill */}
+        {killY < PAD.top + plotH && (
+          <rect
+            x={PAD.left}
+            y={killY}
+            width={plotW}
+            height={PAD.top + plotH - killY}
+            fill="rgba(220,38,38,0.08)"
+          />
+        )}
+
+        {/* HWM dashed line */}
+        {hwmY >= PAD.top && hwmY <= PAD.top + plotH && (
+          <>
+            <line
+              x1={PAD.left}
+              y1={hwmY}
+              x2={PAD.left + plotW}
+              y2={hwmY}
+              stroke="#52525b"
+              strokeDasharray="4 3"
+              strokeWidth="1"
+            />
+            <text x={PAD.left + plotW - 2} y={hwmY - 3} textAnchor="end" fill="#71717a" fontSize="9">
+              HWM
+            </text>
+          </>
+        )}
+
+        {/* Kill zone label */}
+        {killY < PAD.top + plotH && killY >= PAD.top && (
+          <text x={PAD.left + plotW - 2} y={killY - 3} textAnchor="end" fill="#f87171" fontSize="9">
+            -10% kill
+          </text>
+        )}
+
+        {/* Equity fill */}
+        <path d={fillPath} fill="rgba(52,211,153,0.07)" />
+        {/* Equity line */}
+        <path d={linePath} fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinejoin="round" />
+
+        {/* Y axis ticks */}
+        {yTicks.map((t) => (
+          <g key={t.label}>
+            <line x1={PAD.left - 4} y1={t.y} x2={PAD.left} y2={t.y} stroke="#3f3f46" strokeWidth="1" />
+            <text x={PAD.left - 6} y={t.y + 3.5} textAnchor="end" fill="#71717a" fontSize="9">
+              {t.label}
+            </text>
+          </g>
+        ))}
+
+        {/* X axis ticks */}
+        {xTicks.map((t) => (
+          <g key={t.x}>
+            <line x1={t.x} y1={PAD.top + plotH} x2={t.x} y2={PAD.top + plotH + 4} stroke="#3f3f46" strokeWidth="1" />
+            <text x={t.x} y={H - 4} textAnchor="middle" fill="#71717a" fontSize="9">
+              {t.label}
+            </text>
+          </g>
+        ))}
+
+        {/* Axes */}
+        <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + plotH} stroke="#3f3f46" strokeWidth="1" />
+        <line x1={PAD.left} y1={PAD.top + plotH} x2={PAD.left + plotW} y2={PAD.top + plotH} stroke="#3f3f46" strokeWidth="1" />
+      </svg>
+    </div>
   );
 }
 
@@ -86,11 +280,7 @@ function PortfolioCard({ portfolio }: { portfolio: Portfolio }) {
         <Stat label="Balance" value={fmtUSDT(portfolio.balance_usdt)} />
         <Stat label="Equity" value={fmtUSDT(portfolio.equity_usdt)} />
         <Stat label="High-Water Mark" value={fmtUSDT(portfolio.high_water_mark)} />
-        <Stat
-          label="Drawdown"
-          value={fmtPct(portfolio.drawdown_pct)}
-          valueClass={drawdownColor}
-        />
+        <Stat label="Drawdown" value={fmtPct(portfolio.drawdown_pct)} valueClass={drawdownColor} />
       </div>
       <div>
         <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
@@ -316,14 +506,10 @@ function GoLiveChecklist({ stats, portfolio }: { stats: TradeStats; portfolio: P
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-4 space-y-2">
-      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-        Go-Live Checklist
-      </p>
+      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Go-Live Checklist</p>
       {checks.map((c) => (
         <div key={c.label} className="flex items-start gap-2 text-sm">
-          <span className={c.done ? "text-emerald-400" : "text-zinc-600"}>
-            {c.done ? "✓" : "○"}
-          </span>
+          <span className={c.done ? "text-emerald-400" : "text-zinc-600"}>{c.done ? "✓" : "○"}</span>
           <span className={c.done ? "text-zinc-300" : "text-zinc-500"}>{c.label}</span>
           <span className="ml-auto text-xs text-zinc-600">{c.note}</span>
         </div>
@@ -344,6 +530,12 @@ export default function BotPage() {
     queryKey: ["bot-portfolio"],
     queryFn: botApi.getPortfolio,
     refetchInterval: 30_000,
+  });
+
+  const { data: history = [] } = useQuery({
+    queryKey: ["bot-portfolio-history"],
+    queryFn: () => botApi.getPortfolioHistory(288),
+    refetchInterval: 60_000,
   });
 
   const { data: positions = [] } = useQuery({
@@ -369,16 +561,19 @@ export default function BotPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Trading Bot</h1>
         <p className="text-sm text-zinc-500 mt-0.5">
-          Binance Futures · {status?.trading_mode ?? "testnet"} · {status?.active_strategy?.toUpperCase() ?? "RSI"} strategy
+          Binance Futures · {status?.trading_mode ?? "testnet"} · {status?.active_strategy?.toUpperCase() ?? "—"} strategy
         </p>
       </div>
 
       {status && <StatusBanner status={status} />}
+      {status && <StrategyPanel status={status} />}
 
       <div className="grid grid-cols-2 gap-4">
         {portfolio && <PortfolioCard portfolio={portfolio} />}
         {stats && <StatsCard stats={stats} />}
       </div>
+
+      <EquityCurve snapshots={history} />
 
       <div>
         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">

@@ -103,13 +103,23 @@ export interface TradeStats {
   avg_rr: number;
 }
 
+export interface PortfolioSnapshot {
+  id: number;
+  equity_usdt: number;
+  high_water_mark: number;
+  drawdown_pct: number;
+  recorded_at: string;
+}
+
 export const botApi = {
   getStatus: () => api<BotStatus>("/bot/status"),
   getPortfolio: () => api<Portfolio>("/bot/portfolio"),
   getPositions: () => api<Position[]>("/bot/positions"),
   getTrades: (limit = 50) => api<Trade[]>(`/bot/trades?limit=${limit}`),
   getStats: () => api<TradeStats>("/bot/stats"),
+  getPortfolioHistory: (limit = 288) => api<PortfolioSnapshot[]>(`/bot/portfolio/history?limit=${limit}`),
   resume: () => api<BotStatus>("/bot/resume", { method: "POST" }),
+  trigger: () => api<{ task_id: string; status: string }>("/bot/trigger", { method: "POST" }),
   updateConfig: (body: { active_strategy?: string; strategy_params?: Record<string, unknown> }) =>
     api<BotStatus>("/bot/config", { method: "PATCH", body: JSON.stringify(body) }),
 };
