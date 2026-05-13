@@ -82,6 +82,8 @@ class BinanceClient:
             params=params,
             headers={"X-MBX-APIKEY": self._api_key},
         )
+        if not r.is_success:
+            logger.error(f"Binance {r.status_code} on POST {path}: {r.text}")
         r.raise_for_status()
         return r.json()
 
@@ -168,9 +170,13 @@ class BinanceClient:
         )
 
     async def set_stop_loss(self, symbol: str, side: str, quantity: float, stop_price: float) -> dict:
-        """Place a STOP_MARKET order (stop loss). side is the closing side (opposite of position)."""
+        """
+        Place a STOP_MARKET order (stop loss). closePosition=true closes the entire position.
+        NOTE: Binance testnet does not support conditional orders — the caller should handle
+        the resulting -4120 error gracefully (e.g. log a warning, still record the position).
+        """
         if self._stub:
-            logger.info(f"[stub] STOP_MARKET {side} {quantity} {symbol} @ {stop_price}")
+            logger.info(f"[stub] STOP_MARKET {side} {symbol} @ {stop_price}")
             return {"orderId": f"stub-sl-{int(time.time())}", "status": "NEW"}
 
         return await self._post(
@@ -179,16 +185,19 @@ class BinanceClient:
                 "symbol": symbol,
                 "side": side,
                 "type": "STOP_MARKET",
-                "quantity": quantity,
-                "stopPrice": stop_price,
-                "closePosition": "false",
+                "stopPrice": round(stop_price, 2),
+                "closePosition": "true",
             },
         )
 
     async def set_take_profit(self, symbol: str, side: str, quantity: float, stop_price: float) -> dict:
-        """Place a TAKE_PROFIT_MARKET order."""
+        """
+        Place a TAKE_PROFIT_MARKET order. closePosition=true closes the entire position.
+        NOTE: Binance testnet does not support conditional orders — the caller should handle
+        the resulting -4120 error gracefully (e.g. log a warning, still record the position).
+        """
         if self._stub:
-            logger.info(f"[stub] TAKE_PROFIT_MARKET {side} {quantity} {symbol} @ {stop_price}")
+            logger.info(f"[stub] TAKE_PROFIT_MARKET {side} {symbol} @ {stop_price}")
             return {"orderId": f"stub-tp-{int(time.time())}", "status": "NEW"}
 
         return await self._post(
@@ -197,9 +206,8 @@ class BinanceClient:
                 "symbol": symbol,
                 "side": side,
                 "type": "TAKE_PROFIT_MARKET",
-                "quantity": quantity,
-                "stopPrice": stop_price,
-                "closePosition": "false",
+                "stopPrice": round(stop_price, 2),
+                "closePosition": "true",
             },
         )
 

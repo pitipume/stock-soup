@@ -52,7 +52,7 @@ def size_position(
         logger.warning("Stop distance is 0 — refusing to size position")
         return 0.0
 
-    size = risk_amount / stop_distance
+    size = risk_amount / (stop_distance * leverage)
     return round(size, 3)
 
 

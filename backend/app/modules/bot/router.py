@@ -48,13 +48,15 @@ async def resume_bot(db: AsyncSession = Depends(get_db)):
     config.suspension_reason = None
     await db.commit()
     await db.refresh(config)
+    async with BinanceClient() as client:
+        stub = client.is_stub
     return BotStatusOut(
         is_suspended=config.is_suspended,
         suspension_reason=config.suspension_reason,
         active_strategy=config.active_strategy,
         strategy_params=config.strategy_params,
         trading_mode=settings.trading_mode,
-        is_stub=True,
+        is_stub=stub,
     )
 
 

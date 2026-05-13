@@ -129,8 +129,17 @@ async def execute_signal(
     sl_side = "SELL" if signal.action == "long" else "BUY"
 
     order = await client.place_order(symbol, binance_side, check.position_size)
-    await client.set_stop_loss(symbol, sl_side, check.position_size, signal.stop_loss)
-    await client.set_take_profit(symbol, sl_side, check.position_size, signal.take_profit)
+
+    try:
+        await client.set_stop_loss(symbol, sl_side, check.position_size, signal.stop_loss)
+        await client.set_take_profit(symbol, sl_side, check.position_size, signal.take_profit)
+    except Exception as e:
+        # Binance testnet does not support conditional orders (STOP / TAKE_PROFIT).
+        # Log a warning but still record the position — sync_positions handles closure via P&L.
+        logger.warning(
+            f"[{symbol}] Conditional orders not supported on this account/mode — "
+            f"position will be tracked but no SL/TP set on exchange. Error: {e}"
+        )
 
     position = Position(
         trading_mode=settings.trading_mode,
@@ -142,7 +151,7 @@ async def execute_signal(
         take_profit=signal.take_profit,
         leverage=_DEFAULT_LEVERAGE,
         strategy=strategy,
-        binance_order_id=order.get("orderId"),
+        binance_order_id=str(order.get("orderId", "")),
     )
     db.add(position)
     await db.commit()

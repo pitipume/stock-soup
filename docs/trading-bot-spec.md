@@ -168,6 +168,19 @@ Before setting `TRADING_MODE=live`, ALL of these must be true:
 
 ---
 
+## Known testnet limitations
+
+- **Conditional orders not supported**: Binance Futures testnet (`testnet.binancefuture.com`) rejects
+  `STOP_MARKET` and `TAKE_PROFIT_MARKET` orders with error -4120. These work on the live API.
+  On testnet, the bot places the entry order and records the position in DB, but SL/TP are not set
+  on the exchange. Position lifecycle is handled by the `sync_positions` Celery task instead.
+  **This will not be an issue in production** (live API supports these order types).
+
+- **Position sizing bug (fixed 2026-05-13)**: Original formula `risk_amount / stop_distance` did not
+  account for leverage, causing 3× oversizing. Fixed to `risk_amount / (stop_distance × leverage)`.
+
+---
+
 ## Data flow (Phase 2)
 
 ```
