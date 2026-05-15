@@ -111,11 +111,13 @@ VI Scanner only:
 
 Do NOT add bot or lab features yet. Phase 1 = working VI scanner first.
 
-## Known issues (as of 2026-05-13)
+## Known issues (as of 2026-05-16)
 
 - **Wikipedia scraping blocked in Docker** — Cloudflare 403s on Wikipedia ticker lists. Resolved by using a static `_US_UNIVERSE` list (~200 tickers) in `screener.py`. Update the list manually when index constituents change significantly.
 - **Testnet conditional orders blocked** — Binance Futures testnet rejects `STOP_MARKET` / `TAKE_PROFIT_MARKET` with error -4120. Entry orders still place successfully. `sync_positions` task handles position lifecycle. Not an issue on live API.
 - **High water mark pollution** — if you switch from stub/paper to testnet mode, old HWM values in `portfolio_snapshots` will trigger the kill switch. Fix: `DELETE FROM portfolio_snapshots; DELETE FROM positions; DELETE FROM trades;` then `POST /bot/resume`.
+- **CORS on remote deploy** — `main.py` must list the server's public IP in `allow_origins`. After adding a new IP, run `docker-compose up -d --build backend` (not just restart — code is baked into the image).
+- **NEXT_PUBLIC_API_URL** — baked into Next.js at build time. Must be hardcoded in `frontend/src/lib/api.ts` (not just an env var) when deploying to a remote server. After changing it, run `docker-compose up -d --build frontend`.
 
 ## What NOT to do
 

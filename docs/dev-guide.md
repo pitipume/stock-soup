@@ -229,3 +229,7 @@ The ticker may be delisted, halted, or the symbol format differs (e.g., `BRK-B` 
 
 ### Frontend can't reach API
 → Check `NEXT_PUBLIC_API_URL` in `.env`. Must be reachable from the browser, not just inside Docker (so `http://localhost:8000`, not `http://backend:8000`).
+→ On remote deploy (Hetzner etc): `NEXT_PUBLIC_API_URL` is baked at build time. Hardcode the server IP in `frontend/src/lib/api.ts` and run `docker-compose up -d --build frontend`.
+
+### Dashboard shows no data when accessed from another device
+→ CORS issue. Add the server's public IP to `allow_origins` in `backend/app/main.py`, then run `docker-compose up -d --build backend`. Restart alone is not enough — the image must be rebuilt.
