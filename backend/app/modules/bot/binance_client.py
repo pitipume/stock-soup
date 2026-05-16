@@ -102,11 +102,13 @@ class BinanceClient:
 
     async def get_equity(self) -> float:
         """Return total equity (margin balance = wallet + unrealised PnL)."""
+        import sys
+        print(f"[DEBUG-EQUITY] stub={self._stub}", flush=True, file=sys.stderr)
         if self._stub:
             return _STUB_BALANCE
 
         data = await self._get("/fapi/v2/account", signed=True)
-        print(f"[DEBUG] totalMarginBalance={data.get('totalMarginBalance')} totalWalletBalance={data.get('totalWalletBalance')} availableBalance={data.get('availableBalance')}", flush=True)
+        print(f"[DEBUG-EQUITY] totalMarginBalance={data.get('totalMarginBalance')} totalWalletBalance={data.get('totalWalletBalance')}", flush=True, file=sys.stderr)
         return float(data["totalMarginBalance"])
 
     async def get_price(self, symbol: str) -> float:
