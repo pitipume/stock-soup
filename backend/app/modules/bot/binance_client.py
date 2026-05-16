@@ -106,8 +106,7 @@ class BinanceClient:
             return _STUB_BALANCE
 
         data = await self._get("/fapi/v2/account", signed=True)
-        logger.info(f"[debug] account keys: {list(data.keys())}")
-        logger.info(f"[debug] totalMarginBalance={data.get('totalMarginBalance')} totalWalletBalance={data.get('totalWalletBalance')} availableBalance={data.get('availableBalance')}")
+        print(f"[DEBUG] totalMarginBalance={data.get('totalMarginBalance')} totalWalletBalance={data.get('totalWalletBalance')} availableBalance={data.get('availableBalance')}", flush=True)
         return float(data["totalMarginBalance"])
 
     async def get_price(self, symbol: str) -> float:
