@@ -168,15 +168,15 @@ async def _check_symbol(client: BinanceClient, symbol: str, strategy: str, param
 
 async def _sync_closed_positions():
     """
-    For each open Position in DB, check if Binance still has it open.
-    If not, calculate P&L and record a Trade.
+    For each open Position in DB:
+      1. Check if Binance already closed it (live mode — SL/TP orders executed).
+      2. If not, check if current price has passed SL or TP and close manually.
+         This is the testnet/demo fallback since conditional orders are blocked there.
 
     In stub mode: randomly close ~10% of positions per cycle to simulate SL/TP hits.
     """
     from app.models.bot import Position, Trade
     from sqlalchemy import select
-    from datetime import datetime, timezone
-    import random
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -189,13 +189,45 @@ async def _sync_closed_positions():
 
         async with BinanceClient() as client:
             for pos in positions:
-                closed = await _is_position_closed(client, pos)
-                if not closed:
+                exit_price = None
+
+                if client.is_stub:
+                    import random
+                    if random.random() < 0.10:
+                        exit_price = await client.get_price(pos.symbol)
+                else:
+                    current_price = await client.get_price(pos.symbol)
+
+                    # Check if exchange already closed it (live SL/TP filled)
+                    already_closed = await _is_closed_on_exchange(client, pos)
+                    if already_closed:
+                        exit_price = current_price
+                    else:
+                        # Manual SL/TP enforcement for testnet (conditional orders blocked)
+                        sl_hit = (
+                            (pos.side == "long" and current_price <= pos.stop_loss) or
+                            (pos.side == "short" and current_price >= pos.stop_loss)
+                        )
+                        tp_hit = (
+                            (pos.side == "long" and current_price >= pos.take_profit) or
+                            (pos.side == "short" and current_price <= pos.take_profit)
+                        )
+                        if sl_hit or tp_hit:
+                            try:
+                                await client.close_position(pos.symbol, pos.side, pos.size)
+                                exit_price = current_price
+                                logger.info(
+                                    f"[{pos.symbol}] Manually closed at {current_price} "
+                                    f"({'SL' if sl_hit else 'TP'} hit)"
+                                )
+                            except Exception as e:
+                                logger.error(f"[{pos.symbol}] Failed to close: {e}")
+                                continue
+
+                if exit_price is None:
                     continue
 
-                exit_price = await client.get_price(pos.symbol)
                 pnl_usdt, pnl_pct, outcome, close_reason = _calc_pnl(pos, exit_price)
-
                 trade = Trade(
                     trading_mode=pos.trading_mode,
                     symbol=pos.symbol,
@@ -216,19 +248,14 @@ async def _sync_closed_positions():
                 await db.delete(pos)
                 logger.info(
                     f"Position closed: {pos.symbol} {pos.side} | "
-                    f"P&L={pnl_usdt:+.2f} USDT ({outcome})"
+                    f"P&L={pnl_usdt:+.2f} USDT ({outcome}) reason={close_reason}"
                 )
 
         await db.commit()
 
 
-async def _is_position_closed(client: BinanceClient, pos) -> bool:
-    """Return True if the position has been closed on Binance."""
-    if client.is_stub:
-        # Stub: 10% chance per check that the position closes (simulates SL/TP)
-        import random
-        return random.random() < 0.10
-
+async def _is_closed_on_exchange(client: BinanceClient, pos) -> bool:
+    """Return True if Binance shows zero position size (exchange closed it via SL/TP)."""
     try:
         data = await client._get(
             "/fapi/v2/positionRisk",
