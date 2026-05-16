@@ -101,12 +101,14 @@ class BinanceClient:
         return 0.0
 
     async def get_equity(self) -> float:
-        """Return total equity (balance + unrealised PnL)."""
+        """Return total equity (margin balance = wallet + unrealised PnL)."""
         if self._stub:
             return _STUB_BALANCE
 
         data = await self._get("/fapi/v2/account", signed=True)
-        return float(data["totalWalletBalance"]) + float(data["totalUnrealizedProfit"])
+        logger.info(f"[debug] account keys: {list(data.keys())}")
+        logger.info(f"[debug] totalMarginBalance={data.get('totalMarginBalance')} totalWalletBalance={data.get('totalWalletBalance')} availableBalance={data.get('availableBalance')}")
+        return float(data["totalMarginBalance"])
 
     async def get_price(self, symbol: str) -> float:
         """Latest mark price for a symbol (e.g. BTCUSDT)."""
