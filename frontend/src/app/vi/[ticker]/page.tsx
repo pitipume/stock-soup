@@ -180,7 +180,7 @@ export default function StockDetailPage({
       {data && (
         <>
           {/* Header */}
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-white">{data.company_name}</h1>
               <p className="text-zinc-500 font-mono mt-0.5">{data.ticker}</p>
@@ -195,6 +195,7 @@ export default function StockDetailPage({
                 Criterion Breakdown
               </h2>
             </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-zinc-900/50">
                 <tr className="text-xs text-zinc-600 uppercase tracking-wider">
@@ -212,6 +213,7 @@ export default function StockDetailPage({
               </tbody>
             </table>
 
+            </div>
             {/* Hidden gem check */}
             <div className="px-4 py-3 border-t border-zinc-800 bg-zinc-900/30">
               {data.metrics.market_cap !== null &&
@@ -230,7 +232,7 @@ export default function StockDetailPage({
           </div>
 
           {/* Additional info */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 px-4 py-4 space-y-2">
               <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">
                 Market Data
