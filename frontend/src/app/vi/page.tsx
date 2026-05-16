@@ -200,7 +200,7 @@ export default function VIScannerPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">VI Scanner</h1>
           <p className="text-sm text-zinc-500 mt-0.5">
@@ -224,7 +224,7 @@ export default function VIScannerPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-[280px_1fr] gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
         {/* Scan history sidebar */}
         <div className="space-y-2">
           <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">

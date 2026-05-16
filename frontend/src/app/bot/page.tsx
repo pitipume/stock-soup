@@ -654,7 +654,7 @@ export default function BotPage() {
       {status && <StatusBanner status={status} />}
       {status && <StrategyPanel status={status} />}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {portfolio && <PortfolioCard portfolio={portfolio} />}
         {stats && <StatsCard stats={stats} />}
       </div>

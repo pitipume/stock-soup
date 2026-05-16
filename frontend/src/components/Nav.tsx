@@ -9,7 +9,7 @@ const links = [
 export default function Nav() {
   return (
     <header className="border-b border-zinc-800 bg-zinc-950">
-      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-8">
+      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-6 overflow-x-auto flex-shrink-0 whitespace-nowrap">
         <Link href="/" className="font-bold text-lg tracking-tight text-white">
           Stock<span className="text-emerald-400">Soup</span>
         </Link>
