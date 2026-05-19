@@ -123,6 +123,67 @@ export interface PortfolioSnapshot {
   recorded_at: string;
 }
 
+// ── Lab types ──────────────────────────────────────────────────────────────
+
+export interface BacktestMetrics {
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate_pct: number;
+  total_pnl_usdt: number;
+  total_pnl_pct: number;
+  max_drawdown_pct: number;
+  avg_rr: number;
+}
+
+export interface BacktestTrade {
+  side: string;
+  entry_price: number;
+  exit_price: number;
+  pnl_usdt: number;
+  pnl_pct: number;
+  outcome: string;
+  close_reason: string;
+  entry_time: number;
+  exit_time: number;
+}
+
+export interface BacktestResult {
+  strategy: string;
+  symbol: string;
+  timeframe: string;
+  months: number;
+  initial_balance: number;
+  final_balance: number;
+  metrics: BacktestMetrics;
+  trades: BacktestTrade[];
+  equity_curve: number[];
+  equity_times: number[];
+}
+
+export interface LabConfig {
+  symbols: string[];
+  timeframes: string[];
+  strategies: string[];
+}
+
+export const labApi = {
+  getConfig: () => api<LabConfig>("/lab/config"),
+  backtest: (body: {
+    symbol: string; timeframe: string; strategy: string;
+    params: Record<string, unknown>; months: number;
+    initial_balance: number; leverage: number; risk_pct: number;
+  }) => api<BacktestResult>("/lab/backtest", { method: "POST", body: JSON.stringify(body) }),
+  compare: (body: {
+    symbol: string; timeframe: string; months: number;
+    initial_balance: number; leverage: number; risk_pct: number;
+  }) => api<BacktestResult[]>("/lab/compare", { method: "POST", body: JSON.stringify(body) }),
+  pinescript: (strategy: string, params: Record<string, unknown>) =>
+    api<{ strategy: string; code: string }>("/lab/pinescript", {
+      method: "POST", body: JSON.stringify({ strategy, params }),
+    }),
+};
+
 export const botApi = {
   getStatus: () => api<BotStatus>("/bot/status"),
   getPortfolio: () => api<Portfolio>("/bot/portfolio"),

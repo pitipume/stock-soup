@@ -3,7 +3,7 @@ import Link from "next/link";
 const links = [
   { href: "/vi", label: "VI Scanner", active: true },
   { href: "/bot", label: "Trading Bot", active: true },
-  { href: "/lab", label: "Formula Lab", active: false },
+  { href: "/lab", label: "Formula Lab", active: true },
 ];
 
 export default function Nav() {

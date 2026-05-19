@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.modules.vi.router import router as vi_router
 from app.modules.bot.router import router as bot_router
+from app.modules.lab.router import router as lab_router
 
 app = FastAPI(
     title="StockSoup API",
@@ -21,6 +22,7 @@ app.add_middleware(
 
 app.include_router(vi_router, prefix="/vi", tags=["VI Scanner"])
 app.include_router(bot_router, prefix="/bot", tags=["Trading Bot"])
+app.include_router(lab_router, prefix="/lab", tags=["Formula Lab"])
 
 
 @app.get("/health")
