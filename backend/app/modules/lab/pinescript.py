@@ -254,6 +254,72 @@ plot(ema200, title="EMA 200", color=color.gray, linewidth=1)
 """
 
 
+_TRIPLE_EMA_STOCH_RSI = """//@version=5
+// Triple EMA + Stochastic RSI Strategy (StockSoup)
+// Strategy concept inspired by TTMW STR: Triple EMA + Stochastic RSI
+// Original indicator by stampknvt (TradingView) — https://www.tradingview.com/script/BVp0qP4Z-TTMW-STR-Triple-EMA-Stochastic-RSI-a001/
+// Adapted for algorithmic backtesting by StockSoup
+strategy("Triple EMA + StochRSI (StockSoup)", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=1)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+ema_fast    = input.int({ema_fast},   title="Fast EMA",    minval=2)
+ema_slow    = input.int({ema_slow},   title="Slow EMA",    minval=2)
+ema_filter  = input.int({ema_filter}, title="Filter EMA",  minval=50)
+rsi_period  = input.int({rsi_period}, title="RSI Period",  minval=2)
+stoch_period= input.int({stoch_period},title="Stoch Period",minval=2)
+k_smooth    = input.int({k_smooth},   title="K Smooth",    minval=1)
+d_smooth    = input.int({d_smooth},   title="D Smooth",    minval=1)
+oversold    = input.float({oversold}, title="Oversold",    minval=5,  maxval=40)
+overbought  = input.float({overbought},title="Overbought", minval=60, maxval=95)
+rr          = input.float({rr},       title="Risk:Reward", minval=1.0)
+
+// ── EMAs ──────────────────────────────────────────────────────────────────────
+emaf   = ta.ema(close, ema_fast)
+emas   = ta.ema(close, ema_slow)
+emafil = ta.ema(close, ema_filter)
+
+bullish_ema = emaf > emas and emas > emafil
+bearish_ema = emaf < emas and emas < emafil
+
+// ── Stochastic RSI ────────────────────────────────────────────────────────────
+rsi_val = ta.rsi(close, rsi_period)
+k_raw   = ta.stoch(rsi_val, rsi_val, rsi_val, stoch_period)
+k       = ta.sma(k_raw, k_smooth)
+d       = ta.sma(k, d_smooth)
+
+// ── Signals ───────────────────────────────────────────────────────────────────
+long_cross  = ta.crossover(k, d)  and k[1] < oversold
+short_cross = ta.crossunder(k, d) and k[1] > overbought
+
+long_entry  = bullish_ema and long_cross
+short_entry = bearish_ema and short_cross
+
+// ── SL: lowest low / highest high of last 3 bars ──────────────────────────────
+sl_long  = ta.lowest(low,  3)
+sl_short = ta.highest(high, 3)
+
+// ── Execution ─────────────────────────────────────────────────────────────────
+if long_entry and strategy.position_size == 0
+    risk = close - sl_long
+    tp   = close + risk * rr
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", stop=sl_long, limit=tp)
+
+if short_entry and strategy.position_size == 0
+    risk = sl_short - close
+    tp   = close - risk * rr
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", stop=sl_short, limit=tp)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(emaf,   title="EMA Fast",   color=color.new(color.blue,   0), linewidth=1)
+plot(emas,   title="EMA Slow",   color=color.new(color.orange, 0), linewidth=1)
+plot(emafil, title="EMA Filter", color=color.new(color.gray,   0), linewidth=2)
+bgcolor(long_entry  ? color.new(color.green, 85) : na)
+bgcolor(short_entry ? color.new(color.red,   85) : na)
+"""
+
+
 def generate(strategy: str, params: dict) -> str:
     p = params
 
@@ -301,6 +367,19 @@ def generate(strategy: str, params: dict) -> str:
         return _COMBINED.format(
             threshold=g("threshold", 0.6),
             sl_pct=g("sl_pct", 2.0),
+            rr=g("rr", 2.0),
+        )
+    elif strategy == "triple_ema_stoch_rsi":
+        return _TRIPLE_EMA_STOCH_RSI.format(
+            ema_fast=int(g("ema_fast", 12)),
+            ema_slow=int(g("ema_slow", 26)),
+            ema_filter=int(g("ema_filter", 200)),
+            rsi_period=int(g("rsi_period", 14)),
+            stoch_period=int(g("stoch_period", 14)),
+            k_smooth=int(g("k_smooth", 3)),
+            d_smooth=int(g("d_smooth", 3)),
+            oversold=g("oversold", 20),
+            overbought=g("overbought", 80),
             rr=g("rr", 2.0),
         )
     else:
