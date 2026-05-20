@@ -173,6 +173,8 @@ export interface BacktestJob {
   mode: "backtest" | "compare";
   result: BacktestResult | BacktestResult[] | null;
   error: string | null;
+  progress: number | null;
+  phase: string | null;
 }
 
 export interface BacktestHistoryEntry {

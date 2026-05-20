@@ -326,9 +326,22 @@ function BacktestTab({ onJobDone }: { onJobDone: () => void }) {
           className="px-4 py-1.5 text-sm font-semibold bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-50">
           {loading ? "Running…" : "▶ Run Backtest"}
         </button>
-        {loading && <p className="text-xs text-zinc-500 animate-pulse">Running in background — safe to refresh…</p>}
         {result && <button onClick={clear} className="text-xs text-zinc-600 hover:text-zinc-400">Clear</button>}
       </div>
+
+      {loading && (
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-xs text-zinc-500">
+            <span className="animate-pulse">{job?.phase ?? "Queued…"}</span>
+            <span>{job?.progress ?? 0}%</span>
+          </div>
+          <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+              style={{ width: `${job?.progress ?? 0}%` }} />
+          </div>
+          <p className="text-xs text-zinc-600">Safe to refresh — result saved in background</p>
+        </div>
+      )}
 
       {error && <div className="rounded-lg border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-300">{error}</div>}
 
@@ -381,9 +394,22 @@ function CompareTab({ onJobDone }: { onJobDone: () => void }) {
           className="px-4 py-1.5 text-sm font-semibold bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-50">
           {loading ? "Comparing…" : "▶ Compare All Strategies"}
         </button>
-        {loading && <p className="text-xs text-zinc-500 animate-pulse">Running in background — safe to refresh…</p>}
         {results && <button onClick={clear} className="text-xs text-zinc-600 hover:text-zinc-400">Clear</button>}
       </div>
+
+      {loading && (
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-xs text-zinc-500">
+            <span className="animate-pulse">{job?.phase ?? "Queued…"}</span>
+            <span>{job?.progress ?? 0}%</span>
+          </div>
+          <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+              style={{ width: `${job?.progress ?? 0}%` }} />
+          </div>
+          <p className="text-xs text-zinc-600">Safe to refresh — result saved in background</p>
+        </div>
+      )}
 
       {error && <div className="rounded-lg border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-300">{error}</div>}
 

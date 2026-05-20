@@ -25,9 +25,27 @@ _JOB_TTL = 604_800   # 7 days
 _HISTORY_KEY = "lab:history"
 _HISTORY_MAX = 100
 
+_STRATEGY_LABELS = {
+    "rsi": "RSI",
+    "macd": "MACD",
+    "fibonacci": "Fibonacci",
+    "bollinger": "Bollinger Bands",
+    "elliott_wave": "Elliott Wave",
+    "combined": "Combined",
+    "triple_ema_stoch_rsi": "Triple EMA + StochRSI",
+}
+
 
 def _set_job(job_id: str, data: dict):
     _redis.set(f"lab:job:{job_id}", json.dumps(data), ex=_JOB_TTL)
+
+
+def _update_job(job_id: str, updates: dict):
+    raw = _redis.get(f"lab:job:{job_id}")
+    if raw:
+        data = json.loads(raw)
+        data.update(updates)
+        _redis.set(f"lab:job:{job_id}", json.dumps(data), ex=_JOB_TTL)
 
 
 def get_job(job_id: str) -> dict | None:
@@ -62,11 +80,13 @@ def _summary_from_metrics(metrics) -> dict:
 @celery_app.task(bind=True, name="tasks.run_lab_backtest")
 def run_lab_backtest(self, job_id: str, params: dict):
     created_at = params.get("created_at", _now_iso())
-    _set_job(job_id, {"status": "running", "mode": "backtest", "result": None, "error": None})
+    strategy_label = _STRATEGY_LABELS.get(params.get("strategy", ""), params.get("strategy", ""))
+    _update_job(job_id, {"status": "running", "progress": 0, "phase": "Fetching candles…"})
     try:
         candles = asyncio.run(fetch_candles(params["symbol"], params["timeframe"], params["months"]))
         if len(candles) < 300:
             raise ValueError("Not enough historical data for this timeframe/months combination.")
+        _update_job(job_id, {"progress": 50, "phase": f"Running {strategy_label}…"})
         result = run_backtest(
             candles,
             params["symbol"],
@@ -78,7 +98,11 @@ def run_lab_backtest(self, job_id: str, params: dict):
             params["timeframe"],
             params["months"],
         )
-        _set_job(job_id, {"status": "done", "mode": "backtest", "result": result.model_dump(), "error": None})
+        _set_job(job_id, {
+            "status": "done", "mode": "backtest",
+            "result": result.model_dump(), "error": None,
+            "progress": 100, "phase": "Done",
+        })
         _push_history({
             "job_id": job_id,
             "created_at": created_at,
@@ -92,7 +116,7 @@ def run_lab_backtest(self, job_id: str, params: dict):
         })
     except Exception as e:
         logger.error(f"Lab backtest {job_id} failed: {e}")
-        _set_job(job_id, {"status": "failed", "mode": "backtest", "result": None, "error": str(e)})
+        _update_job(job_id, {"status": "failed", "result": None, "error": str(e), "phase": "Failed"})
         _push_history({
             "job_id": job_id,
             "created_at": created_at,
@@ -108,13 +132,18 @@ def run_lab_backtest(self, job_id: str, params: dict):
 @celery_app.task(bind=True, name="tasks.run_lab_compare")
 def run_lab_compare(self, job_id: str, params: dict):
     created_at = params.get("created_at", _now_iso())
-    _set_job(job_id, {"status": "running", "mode": "compare", "result": None, "error": None})
+    n = len(_STRATEGIES)
+    _update_job(job_id, {"status": "running", "progress": 0, "phase": "Fetching candles…"})
     try:
         candles = asyncio.run(fetch_candles(params["symbol"], params["timeframe"], params["months"]))
         if len(candles) < 300:
             raise ValueError("Not enough historical data.")
+
         results = []
-        for strategy in _STRATEGIES:
+        for i, strategy in enumerate(_STRATEGIES):
+            label = _STRATEGY_LABELS.get(strategy, strategy)
+            pct = 10 + int((i / n) * 85)
+            _update_job(job_id, {"progress": pct, "phase": f"Strategy {i + 1}/{n} — {label}"})
             r = run_backtest(
                 candles,
                 params["symbol"],
@@ -127,13 +156,13 @@ def run_lab_compare(self, job_id: str, params: dict):
                 params["months"],
             )
             results.append(r)
+
         results.sort(key=lambda r: r.metrics.total_pnl_usdt, reverse=True)
         best = results[0]
         _set_job(job_id, {
-            "status": "done",
-            "mode": "compare",
+            "status": "done", "mode": "compare",
             "result": [r.model_dump() for r in results],
-            "error": None,
+            "error": None, "progress": 100, "phase": "Done",
         })
         _push_history({
             "job_id": job_id,
@@ -148,7 +177,7 @@ def run_lab_compare(self, job_id: str, params: dict):
         })
     except Exception as e:
         logger.error(f"Lab compare {job_id} failed: {e}")
-        _set_job(job_id, {"status": "failed", "mode": "compare", "result": None, "error": str(e)})
+        _update_job(job_id, {"status": "failed", "result": None, "error": str(e), "phase": "Failed"})
         _push_history({
             "job_id": job_id,
             "created_at": created_at,
