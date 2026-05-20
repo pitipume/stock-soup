@@ -5,7 +5,7 @@ celery_app = Celery(
     "stocksoup",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.scan_tasks", "app.tasks.bot_tasks"],
+    include=["app.tasks.scan_tasks", "app.tasks.bot_tasks", "app.tasks.lab_tasks"],
 )
 
 celery_app.conf.update(

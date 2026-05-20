@@ -167,17 +167,43 @@ export interface LabConfig {
   strategies: string[];
 }
 
+export interface BacktestJob {
+  job_id: string;
+  status: "pending" | "running" | "done" | "failed";
+  mode: "backtest" | "compare";
+  result: BacktestResult | BacktestResult[] | null;
+  error: string | null;
+}
+
+export interface BacktestHistoryEntry {
+  job_id: string;
+  created_at: string;
+  mode: "backtest" | "compare";
+  symbol: string;
+  timeframe: string;
+  months: number;
+  strategy: string;
+  status: string;
+  total_pnl_usdt: number | null;
+  total_pnl_pct: number | null;
+  win_rate_pct: number | null;
+  max_drawdown_pct: number | null;
+  total_trades: number | null;
+}
+
 export const labApi = {
   getConfig: () => api<LabConfig>("/lab/config"),
   backtest: (body: {
     symbol: string; timeframe: string; strategy: string;
     params: Record<string, unknown>; months: number;
     initial_balance: number; leverage: number; risk_pct: number;
-  }) => api<BacktestResult>("/lab/backtest", { method: "POST", body: JSON.stringify(body) }),
+  }) => api<{ job_id: string; status: string }>("/lab/backtest", { method: "POST", body: JSON.stringify(body) }),
   compare: (body: {
     symbol: string; timeframe: string; months: number;
     initial_balance: number; leverage: number; risk_pct: number;
-  }) => api<BacktestResult[]>("/lab/compare", { method: "POST", body: JSON.stringify(body) }),
+  }) => api<{ job_id: string; status: string }>("/lab/compare", { method: "POST", body: JSON.stringify(body) }),
+  getJob: (jobId: string) => api<BacktestJob>(`/lab/jobs/${jobId}`),
+  getHistory: () => api<BacktestHistoryEntry[]>("/lab/history"),
   pinescript: (strategy: string, params: Record<string, unknown>) =>
     api<{ strategy: string; code: string }>("/lab/pinescript", {
       method: "POST", body: JSON.stringify({ strategy, params }),

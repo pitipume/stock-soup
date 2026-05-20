@@ -66,3 +66,32 @@ class PineScriptRequest(BaseModel):
 class PineScriptResult(BaseModel):
     strategy: str
     code: str
+
+
+class BacktestJobSubmit(BaseModel):
+    job_id: str
+    status: str
+
+
+class BacktestHistoryEntry(BaseModel):
+    job_id: str
+    created_at: str
+    mode: str          # "backtest" | "compare"
+    symbol: str
+    timeframe: str
+    months: int
+    strategy: str      # strategy name or "compare_all"
+    status: str
+    total_pnl_usdt: float | None = None
+    total_pnl_pct: float | None = None
+    win_rate_pct: float | None = None
+    max_drawdown_pct: float | None = None
+    total_trades: int | None = None
+
+
+class BacktestJobResponse(BaseModel):
+    job_id: str
+    status: str
+    mode: str
+    result: Any = None
+    error: str | None = None
