@@ -571,6 +571,8 @@ function HistoryTab() {
   const [history, setHistory] = useState<BacktestHistoryEntry[]>([]);
   const [selected, setSelected] = useState<BacktestJob | null>(null);
   const [loadingJob, setLoadingJob] = useState(false);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     labApi.getHistory().then(setHistory).catch(() => {});
@@ -579,11 +581,14 @@ function HistoryTab() {
   async function viewResult(entry: BacktestHistoryEntry) {
     if (entry.status !== "done") return;
     setLoadingJob(true);
+    setJobError(null);
+    setSelected(null);
     try {
       const job = await labApi.getJob(entry.job_id);
       setSelected(job);
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     } catch {
-      alert("Result expired (7-day TTL). Run the backtest again.");
+      setJobError("Result expired (7-day TTL) — run again to restore.");
     } finally {
       setLoadingJob(false);
     }
@@ -592,6 +597,45 @@ function HistoryTab() {
   return (
     <div className="space-y-5">
       <p className="text-xs text-zinc-500">Last 100 runs · results stored 7 days · newest first</p>
+
+      {loadingJob && <p className="text-xs text-zinc-500 animate-pulse">Loading result…</p>}
+      {jobError && <div className="rounded-lg border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-300">{jobError}</div>}
+
+      {selected && (
+        <div ref={resultRef} className="rounded-lg border border-zinc-700 bg-zinc-900/40 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Result</p>
+            <button onClick={() => setSelected(null)} className="text-xs text-zinc-600 hover:text-zinc-400">Close ✕</button>
+          </div>
+
+          {selected.mode === "backtest" && (() => {
+            const r = selected.result as BacktestResult;
+            return (
+              <div className="space-y-4">
+                <p className="text-sm font-semibold text-zinc-300">
+                  {stratLabel(r.strategy)} · {r.symbol} · {r.timeframe} · {r.months}m
+                </p>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3">
+                  <EquityCurve curve={r.equity_curve} times={r.equity_times} initial={r.initial_balance} />
+                </div>
+                <MetricsGrid m={r.metrics} initial={r.initial_balance} final={r.final_balance} />
+                <TradeTable result={r} />
+              </div>
+            );
+          })()}
+
+          {selected.mode === "compare" && (
+            <div className="space-y-3">
+              {(selected.result as BacktestResult[]).map((r) => (
+                <div key={r.strategy} className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3">
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">{stratLabel(r.strategy)}</p>
+                  <MetricsGrid m={r.metrics} initial={r.initial_balance} final={r.final_balance} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {history.length === 0 && (
         <p className="text-sm text-zinc-600">No backtest history yet. Run a backtest or compare to get started.</p>
@@ -658,45 +702,6 @@ function HistoryTab() {
         </div>
       )}
 
-      {loadingJob && <p className="text-xs text-zinc-500">Loading result…</p>}
-
-      {selected && selected.mode === "backtest" && (
-        <div className="space-y-4 pt-2 border-t border-zinc-800">
-          {(() => {
-            const r = selected.result as BacktestResult;
-            return (
-              <>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <p className="text-sm font-semibold text-zinc-300">
-                    {stratLabel(r.strategy)} · {r.symbol} · {r.timeframe} · {r.months}m
-                  </p>
-                  <button onClick={() => setSelected(null)} className="text-xs text-zinc-600 hover:text-zinc-400">Close</button>
-                </div>
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3">
-                  <EquityCurve curve={r.equity_curve} times={r.equity_times} initial={r.initial_balance} />
-                </div>
-                <MetricsGrid m={r.metrics} initial={r.initial_balance} final={r.final_balance} />
-                <TradeTable result={r} />
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {selected && selected.mode === "compare" && (
-        <div className="space-y-3 pt-2 border-t border-zinc-800">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-zinc-500">Compare result</p>
-            <button onClick={() => setSelected(null)} className="text-xs text-zinc-600 hover:text-zinc-400">Close</button>
-          </div>
-          {(selected.result as BacktestResult[]).map((r) => (
-            <div key={r.strategy} className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-3">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">{stratLabel(r.strategy)}</p>
-              <MetricsGrid m={r.metrics} initial={r.initial_balance} final={r.final_balance} />
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
