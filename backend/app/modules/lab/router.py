@@ -11,7 +11,7 @@ from app.modules.lab.schemas import (
 )
 from app.modules.lab.backtester import _STRATEGIES
 from app.modules.lab import pinescript
-from app.tasks.lab_tasks import run_lab_backtest, run_lab_compare, get_job, get_history
+from app.tasks.lab_tasks import run_lab_backtest, run_lab_compare, get_job, get_history, _set_job
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ async def get_config():
 @router.post("/backtest", response_model=BacktestJobSubmit)
 async def backtest(req: BacktestRequest):
     job_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc).isoformat()
     params = {
         "symbol": req.symbol,
         "timeframe": req.timeframe,
@@ -41,8 +42,9 @@ async def backtest(req: BacktestRequest):
         "initial_balance": req.initial_balance,
         "leverage": req.leverage,
         "risk_pct": req.risk_pct,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at,
     }
+    _set_job(job_id, {"status": "pending", "mode": "backtest", "result": None, "error": None})
     run_lab_backtest.delay(job_id, params)
     return BacktestJobSubmit(job_id=job_id, status="pending")
 
@@ -50,6 +52,7 @@ async def backtest(req: BacktestRequest):
 @router.post("/compare", response_model=BacktestJobSubmit)
 async def compare(req: CompareRequest):
     job_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc).isoformat()
     params = {
         "symbol": req.symbol,
         "timeframe": req.timeframe,
@@ -57,8 +60,9 @@ async def compare(req: CompareRequest):
         "initial_balance": req.initial_balance,
         "leverage": req.leverage,
         "risk_pct": req.risk_pct,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at,
     }
+    _set_job(job_id, {"status": "pending", "mode": "compare", "result": None, "error": None})
     run_lab_compare.delay(job_id, params)
     return BacktestJobSubmit(job_id=job_id, status="pending")
 
