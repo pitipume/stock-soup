@@ -56,6 +56,7 @@ class CompareRequest(BaseModel):
     initial_balance: float = 10_000.0
     leverage: int = 3
     risk_pct: float = 0.01
+    strategies: list[str] | None = None  # None = all strategies
 
 
 class PineScriptRequest(BaseModel):

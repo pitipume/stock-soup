@@ -203,6 +203,7 @@ export const labApi = {
   compare: (body: {
     symbol: string; timeframe: string; months: number;
     initial_balance: number; leverage: number; risk_pct: number;
+    strategies?: string[];
   }) => api<{ job_id: string; status: string }>("/lab/compare", { method: "POST", body: JSON.stringify(body) }),
   getJob: (jobId: string) => api<BacktestJob>(`/lab/jobs/${jobId}`),
   getHistory: () => api<BacktestHistoryEntry[]>("/lab/history"),

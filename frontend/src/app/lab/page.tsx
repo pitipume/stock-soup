@@ -373,12 +373,22 @@ function CompareTab({ onJobDone }: { onJobDone: () => void }) {
   const [months, setMonths] = useState(3);
   const [leverage, setLeverage] = useState(3);
   const [riskPct, setRiskPct] = useState(0.01);
+  const [selected, setSelected] = useState<string[]>(STRATEGIES);
   const { job, loading, error, submit, clear } = useBacktestJob("lab_compare_job");
 
   const results = job?.status === "done" ? (job.result as BacktestResult[]) : null;
 
+  function toggleStrategy(s: string) {
+    setSelected((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+    );
+  }
+
   async function run() {
-    const { job_id } = await labApi.compare({ symbol, timeframe, months, initial_balance: 10_000, leverage, risk_pct: riskPct });
+    const { job_id } = await labApi.compare({
+      symbol, timeframe, months, initial_balance: 10_000, leverage, risk_pct: riskPct,
+      strategies: selected,
+    });
     await submit(job_id);
     onJobDone();
   }
@@ -389,10 +399,32 @@ function CompareTab({ onJobDone }: { onJobDone: () => void }) {
         months={months} setMonths={setMonths} leverage={leverage} setLeverage={setLeverage}
         riskPct={riskPct} setRiskPct={setRiskPct} />
 
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-zinc-500">Strategies to compare</p>
+          <div className="flex gap-3 text-xs text-zinc-600">
+            <button onClick={() => setSelected([...STRATEGIES])}>All</button>
+            <button onClick={() => setSelected([])}>None</button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {STRATEGIES.map((s) => (
+            <label key={s} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs cursor-pointer transition-colors ${
+              selected.includes(s)
+                ? "border-emerald-600 bg-emerald-900/30 text-emerald-300"
+                : "border-zinc-700 bg-zinc-900 text-zinc-500"
+            }`}>
+              <input type="checkbox" className="hidden" checked={selected.includes(s)} onChange={() => toggleStrategy(s)} />
+              {stratLabel(s)}
+            </label>
+          ))}
+        </div>
+      </div>
+
       <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={run} disabled={loading}
+        <button onClick={run} disabled={loading || selected.length === 0}
           className="px-4 py-1.5 text-sm font-semibold bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors disabled:opacity-50">
-          {loading ? "Comparing…" : "▶ Compare All Strategies"}
+          {loading ? "Comparing…" : `▶ Compare ${selected.length === STRATEGIES.length ? "All" : selected.length} Strategies`}
         </button>
         {results && <button onClick={clear} className="text-xs text-zinc-600 hover:text-zinc-400">Clear</button>}
       </div>

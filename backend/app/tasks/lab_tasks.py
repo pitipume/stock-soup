@@ -132,15 +132,16 @@ def run_lab_backtest(self, job_id: str, params: dict):
 @celery_app.task(bind=True, name="tasks.run_lab_compare")
 def run_lab_compare(self, job_id: str, params: dict):
     created_at = params.get("created_at", _now_iso())
-    n = len(_STRATEGIES)
     _update_job(job_id, {"status": "running", "progress": 0, "phase": "Fetching candles…"})
     try:
         candles = asyncio.run(fetch_candles(params["symbol"], params["timeframe"], params["months"]))
         if len(candles) < 300:
             raise ValueError("Not enough historical data.")
 
+        strategies = params.get("strategies") or _STRATEGIES
+        n = len(strategies)
         results = []
-        for i, strategy in enumerate(_STRATEGIES):
+        for i, strategy in enumerate(strategies):
             label = _STRATEGY_LABELS.get(strategy, strategy)
             pct = 10 + int((i / n) * 85)
             _update_job(job_id, {"progress": pct, "phase": f"Strategy {i + 1}/{n} — {label}"})

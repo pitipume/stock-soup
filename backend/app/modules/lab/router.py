@@ -60,6 +60,7 @@ async def compare(req: CompareRequest):
         "initial_balance": req.initial_balance,
         "leverage": req.leverage,
         "risk_pct": req.risk_pct,
+        "strategies": req.strategies,
         "created_at": created_at,
     }
     _set_job(job_id, {"status": "pending", "mode": "compare", "result": None, "error": None})
