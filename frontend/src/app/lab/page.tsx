@@ -24,7 +24,7 @@ function fmtDateTime(iso: string) {
   return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-const STRATEGIES = ["rsi", "macd", "fibonacci", "bollinger", "elliott_wave", "combined", "triple_ema_stoch_rsi"];
+const STRATEGIES = ["rsi", "macd", "fibonacci", "bollinger", "elliott_wave", "combined", "triple_ema_stoch_rsi", "three_golden", "supertrend"];
 const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
 const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
 const MONTHS = [1, 3, 6, 12];
@@ -33,6 +33,8 @@ function stratLabel(s: string) {
   const map: Record<string, string> = {
     elliott_wave: "Elliott Wave",
     triple_ema_stoch_rsi: "Triple EMA + StochRSI",
+    three_golden: "Three Golden",
+    supertrend: "Supertrend",
     combined: "Combined",
     compare_all: "Compare All",
   };

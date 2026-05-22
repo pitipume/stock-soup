@@ -17,7 +17,7 @@ from app.modules.lab.schemas import BacktestResult, BacktestMetrics, BacktestTra
 _BINANCE_BASE = "https://fapi.binance.com"
 _MIN_CANDLES = 250  # enough for EMA-200 used by MACD / Elliott Wave
 _MAX_CONCURRENT = 3
-_STRATEGIES = ["rsi", "macd", "fibonacci", "bollinger", "elliott_wave", "combined", "triple_ema_stoch_rsi"]
+_STRATEGIES = ["rsi", "macd", "fibonacci", "bollinger", "elliott_wave", "combined", "triple_ema_stoch_rsi", "three_golden", "supertrend"]
 
 
 async def fetch_candles(symbol: str, interval: str, months: int) -> list[dict]:
@@ -89,6 +89,12 @@ def _get_signal(candles: list[dict], strategy: str, params: dict):
         return evaluate(candles, merged)
     elif strategy == "triple_ema_stoch_rsi":
         from app.modules.bot.strategies.triple_ema_stoch_rsi import evaluate
+        return evaluate(candles, params)
+    elif strategy == "three_golden":
+        from app.modules.bot.strategies.three_golden import evaluate
+        return evaluate(candles, params)
+    elif strategy == "supertrend":
+        from app.modules.bot.strategies.supertrend import evaluate
         return evaluate(candles, params)
     return None
 

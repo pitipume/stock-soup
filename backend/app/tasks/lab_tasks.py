@@ -33,6 +33,8 @@ _STRATEGY_LABELS = {
     "elliott_wave": "Elliott Wave",
     "combined": "Combined",
     "triple_ema_stoch_rsi": "Triple EMA + StochRSI",
+    "three_golden": "Three Golden",
+    "supertrend": "Supertrend",
 }
 
 

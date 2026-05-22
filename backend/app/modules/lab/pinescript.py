@@ -320,6 +320,93 @@ bgcolor(short_entry ? color.new(color.red,   85) : na)
 """
 
 
+_THREE_GOLDEN = """//@version=5
+// Three Golden Strategy (StockSoup)
+// Concept inspired by "Three Golden" by Moonalert (TradingView)
+// Original: https://www.tradingview.com/script/bqbaMOSM/
+// Adapted for algorithmic backtesting by StockSoup
+strategy("Three Golden (StockSoup)", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=1)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+rsi_period  = input.int({rsi_period},  title="RSI Period",   minval=2)
+bb_period   = input.int({bb_period},   title="BB Period",    minval=5)
+macd_fast   = input.int({macd_fast},   title="MACD Fast",    minval=2)
+macd_slow   = input.int({macd_slow},   title="MACD Slow",    minval=2)
+atr_period  = input.int({atr_period},  title="ATR Period",   minval=1)
+atr_mult    = input.float({atr_mult},  title="ATR Multiplier", minval=0.1, step=0.1)
+rr          = input.float({rr},        title="Risk:Reward",  minval=1.0)
+
+// ── Indicators ────────────────────────────────────────────────────────────────
+rsi_val             = ta.rsi(close, rsi_period)
+bb_mid              = ta.sma(close, bb_period)
+[macdLine, _, _]    = ta.macd(close, macd_fast, macd_slow, 9)
+atr                 = ta.atr(atr_period)
+
+// ── Consensus ─────────────────────────────────────────────────────────────────
+bull = close > bb_mid and rsi_val > 50 and macdLine > 0
+bear = close < bb_mid and rsi_val < 50 and macdLine < 0
+
+// Signal on first bar where consensus forms
+long_entry  = bull and not bull[1]
+short_entry = bear and not bear[1]
+
+// ── Execution ─────────────────────────────────────────────────────────────────
+if long_entry and strategy.position_size == 0
+    sl = close - atr * atr_mult
+    tp = close + atr * atr_mult * rr
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", stop=sl, limit=tp)
+
+if short_entry and strategy.position_size == 0
+    sl = close + atr * atr_mult
+    tp = close - atr * atr_mult * rr
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", stop=sl, limit=tp)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(bb_mid, title="BB Mid", color=color.gray, linewidth=1)
+bgcolor(long_entry  ? color.new(color.green, 85) : na)
+bgcolor(short_entry ? color.new(color.red,   85) : na)
+"""
+
+_SUPERTREND = """//@version=5
+// Supertrend Strategy (StockSoup)
+strategy("Supertrend (StockSoup)", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=1)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+atr_period  = input.int({atr_period},   title="ATR Period",     minval=1)
+atr_mult    = input.float({atr_mult},   title="ATR Multiplier", minval=0.1, step=0.1)
+rr          = input.float({rr},         title="Risk:Reward",    minval=1.0)
+
+// ── Supertrend ────────────────────────────────────────────────────────────────
+[supertrend, direction] = ta.supertrend(atr_mult, atr_period)
+
+long_entry  = direction == 1  and direction[1] == -1
+short_entry = direction == -1 and direction[1] == 1
+
+// ── Execution ─────────────────────────────────────────────────────────────────
+if long_entry and strategy.position_size == 0
+    sl = supertrend
+    risk = close - sl
+    tp = close + risk * rr
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", stop=sl, limit=tp)
+
+if short_entry and strategy.position_size == 0
+    sl = supertrend
+    risk = sl - close
+    tp = close - risk * rr
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", stop=sl, limit=tp)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(direction == 1 ? supertrend : na, title="Bullish", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(direction == -1 ? supertrend : na, title="Bearish", color=color.red,  linewidth=2, style=plot.style_linebr)
+bgcolor(long_entry  ? color.new(color.green, 85) : na)
+bgcolor(short_entry ? color.new(color.red,   85) : na)
+"""
+
+
 def generate(strategy: str, params: dict) -> str:
     p = params
 
@@ -381,6 +468,22 @@ def generate(strategy: str, params: dict) -> str:
             oversold=g("oversold", 20),
             overbought=g("overbought", 80),
             rr=g("rr", 2.0),
+        )
+    elif strategy == "three_golden":
+        return _THREE_GOLDEN.format(
+            rsi_period=int(g("rsi_period", 14)),
+            bb_period=int(g("bb_period", 20)),
+            macd_fast=int(g("macd_fast", 12)),
+            macd_slow=int(g("macd_slow", 26)),
+            atr_period=int(g("atr_period", 14)),
+            atr_mult=g("atr_multiplier", 1.0),
+            rr=g("rr_ratio", 2.0),
+        )
+    elif strategy == "supertrend":
+        return _SUPERTREND.format(
+            atr_period=int(g("atr_period", 10)),
+            atr_mult=g("atr_multiplier", 3.0),
+            rr=g("rr_ratio", 2.0),
         )
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
