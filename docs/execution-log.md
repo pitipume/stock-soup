@@ -55,3 +55,20 @@ Market regime context (`docs/research-log.md`, 2026-08-16): BTC has been in a ch
 **Confidence:** Low-to-medium on supertrend specifically being worth testnet validation (directionally reasonable given it's the only strategy clearing both the PnL-positive and ≤8%-DD bars, but the thin single-regime/single-symbol/single-timeframe base and the unresolved RR/PnL reconciliation keep confidence capped). High confidence on ruling out rsi and combined for now — their numbers are unambiguous. Medium confidence on ruling out macd — its drawdown breach is clear-cut against the spec's own threshold, even though its PnL is positive.
 
 **Main risks:** (1) thin backtest history — one symbol, one timeframe, one 6-month regime; (2) regime mismatch — trend-following strategy tested in a choppy/downtrend window, direction of bias on true edge unknown; (3) unresolved metric-definition question on Avg RR vs. reported PnL for supertrend; (4) `combined` strategy's overtrading behavior may indicate a logic bug worth fixing before it's ever reconsidered, independent of parameter tuning.
+
+---
+
+## 2026-08-16 (later same day) — supertrend applied to /bot/config, after Poom's review
+
+**Trigger:** Poom reviewed the evidence accumulated across three rounds and explicitly chose "commit to supertrend, plan testnet deploy" — this is his decision, not an automated one.
+
+**Evidence supporting this, beyond the single-symbol result above:**
+- Round 2 (`docs/backtest-log.md`): `supertrend`/1h held up across BTCUSDT, ETHUSDT, SOLUSDT — all net-positive (+4.9% to +9.75% PnL), consistent drawdown (7.75-8.5%) and trade counts (80-81). No longer a single-symbol result; this was the deciding factor that resolved risk (2) from the round-1 entry above (regime/symbol dependency) partially — still only one calendar window, but no longer only one asset.
+- Round 3 (`docs/backtest-log.md`): the other 8 strategies tested (including the newly-fixed `combined`) all remained worse than `supertrend` — none cleared both the PnL-positive and 8%-drawdown bars.
+- The Avg-RR/PnL reconciliation flag from the round-1 entry above **remains unresolved** — not re-verified before this decision. Worth doing before trusting the magnitude of the edge, not before starting testnet accumulation (testnet trade data will itself help resolve it).
+
+**Action taken:** `PATCH /bot/config {"active_strategy": "supertrend", "strategy_params": {}}` applied. Confirmed via `GET /bot/status`: `active_strategy: "supertrend"`.
+
+**Bot deliberately left `is_suspended: true`.** Not resumed. Reason: starting the actual testnet validation clock (the 30-consecutive-day gate in `docs/trading-bot-spec.md`) only means something on a stable, continuously-running deployment — currently this is Poom's local laptop, which cannot guarantee that (see hosting discussion, `~/.claude/agents/lucy-trading-lead.md` hard constraints). Resuming now would risk burning testnet days that get invalidated by a laptop closing. Resume only once a stable deployment (VPS or laptop kept genuinely 24/7) is actually in place.
+
+**Confidence:** Medium — meaningfully higher than the round-1 entry given multi-symbol confirmation, but still capped by single-timeframe/single-regime evidence and the unresolved RR reconciliation.
