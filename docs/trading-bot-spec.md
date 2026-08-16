@@ -1,7 +1,8 @@
 # Trading Bot Specification (Phase 2)
 
-> Status: Not yet implemented. This document is the design spec.
-> Build Phase 1 (VI Scanner) completely before starting here.
+> Status: Implemented — all 6 strategies below are built and live in `backend/app/modules/bot/strategies/`.
+> Not yet in continuous testnet validation (no stable 24/7 deployment running yet) — the go-live checklist's
+> clock hasn't started. This document remains the design spec / source of truth for the risk rules and strategy logic.
 
 ---
 
