@@ -22,7 +22,17 @@ Why these levels?
 
 Default params:
   swing_lookback    int   = 50    — candles to scan for swing high/low
-  entry_tolerance   float = 0.5   — % distance from level; price must be within this
+  entry_tolerance   float = 0.5   — % distance from level, measured as a % of the
+                                     swing move itself (swing_high - swing_low), not
+                                     of raw price. This matters: for a typical BTC
+                                     6mo/1h swing (~4-5% move), 0.5% of *price* is
+                                     roughly half the gap between adjacent Fib levels,
+                                     so "near a level" was true on ~48% of candles
+                                     (confirmed empirically) instead of being a rare
+                                     confluence signal — that was the root cause of
+                                     fibonacci's overtrading (1187 trades/6mo on 1h).
+                                     Scaling to the move fixes this: it keeps the same
+                                     relative tightness regardless of swing size.
   atr_period        int   = 14
   atr_multiplier    float = 0.5   — stop buffer as multiple of ATR beyond the level
   rr_ratio          float = 2.0
@@ -107,7 +117,7 @@ def evaluate(candles: list[dict], params: Optional[dict] = None) -> Signal:
 
     params keys (all optional):
       swing_lookback    int   = 50
-      entry_tolerance   float = 0.5   (%)
+      entry_tolerance   float = 0.5   (% of the swing move, not of price — see module docstring)
       atr_period        int   = 14
       atr_multiplier    float = 0.5
       rr_ratio          float = 2.0
@@ -144,12 +154,17 @@ def evaluate(candles: list[dict], params: Optional[dict] = None) -> Signal:
 
     stop_buffer = atr * atr_multiplier
     levels = _fib_levels(swing_high, swing_low, uptrend)
+    move = swing_high - swing_low
 
-    # Find the closest Fib level to current price
+    # Find the closest Fib level to current price.
+    # dist_pct is measured as a % of the swing move (not of raw price) — a fixed
+    # % of price does not scale with the swing's own size, so on small/typical
+    # swings the "near a level" zone can swallow most of the gap between adjacent
+    # Fib levels, firing far more often than a real confluence signal should.
     closest: Optional[FibLevel] = None
     closest_dist = float("inf")
     for lvl in levels:
-        dist_pct = abs(entry - lvl.price) / entry * 100
+        dist_pct = abs(entry - lvl.price) / move * 100 if move > 0 else float("inf")
         if dist_pct < closest_dist:
             closest_dist = dist_pct
             closest = lvl

@@ -95,3 +95,17 @@ Market regime context (`docs/research-log.md`, 2026-08-16): BTC has been in a ch
 **Confidence:** raised from "medium, capped by the unresolved RR flag" (prior entry) to **medium, with the RR flag now closed rather than open**. Still not high — the regime/timeframe/win-rate caveats from the original decision are unchanged and remain the binding constraints, not this metric question.
 
 ---
+
+## 2026-08-16 (later) — Fibonacci and macd/triple_ema_stoch_rsi 15m: no deployment recommendation, bugfix/verification only
+
+**Trigger:** Same validation round as above. Two additional items investigated per this round's instructions — neither results in a deployment action.
+
+**Fibonacci:** confirmed and fixed a real overtrading bug (`entry_tolerance` measured as % of raw price instead of % of the swing move — full diagnosis and empirical confirmation in `docs/backtest-log.md`). Trade counts dropped ~89-90% (1h: 1187->127, 15m: 4423->426) and the 15m result flipped from catastrophic (-93.90% PnL, 97.05% max DD) to net-positive (+44.45% PnL, 14.72% max DD) with a sane trade count. **Not recommended for testnet or live deployment on this evidence** — win rates (32.28% 1h, 36.62% 15m) remain well short of the spec's 55% gate, 1h is still net-negative, and this is a single-symbol/single-regime result with no cross-validation yet. This is a bugfix validation, consistent with how the earlier `combined` threshold fix was handled (bug confirmed fixed and worth keeping, strategy itself still unproven as deployable).
+
+**macd / triple_ema_stoch_rsi 15m:** verified the previously-flagged "sub-40% win rate + sub-1 avg RR but strongly positive PnL" combination is **not a pure calculation artifact** — both strategies show genuine positive signed per-trade expectancy (macd15m +0.165R/trade, tesr15m +0.058R/trade) computed directly from real entry/exit/stop prices. However, macd15m's headline magnitude (+180.91%) is meaningfully amplified by compounding position sizing (non-compounding equivalent would be +111.00% — ~1.6x smaller), so the "real" edge is smaller and less dramatic than the raw % return suggests; triple_ema_stoch_rsi15m showed negligible compounding effect (+30.66% actual vs +34.00% non-compounding). **Not recommended for testnet or live deployment** — both remain below the spec's win-rate gate, this is one calendar regime, and macd15m's outsized headline number specifically should not be read as a reliable expectation given the compounding-amplification finding.
+
+**Action taken:** no `/bot/config` changes. `active_strategy` remains `supertrend`, bot remains suspended, consistent with every prior entry this round.
+
+**Confidence:** high on the bug diagnoses and fixes themselves (both empirically confirmed via before/after backtests and, for fibonacci, an independent diagnostic script against real market data). Low-to-none on any of fibonacci/macd/triple_ema_stoch_rsi being close to deployable — that determination is unchanged by this round's work, which was scoped to validation/bugfixing, not a new recommendation.
+
+---

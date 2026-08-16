@@ -258,3 +258,73 @@ To properly check reconciliation, we computed a **signed** per-trade R-multiple 
 **Cross-check — avg_rr now clusters sanely across unrelated strategies:** re-running fibonacci, macd, and triple_ema_stoch_rsi below (same round) with the fix in place produced avg_rr values of 1.30-1.39 across all of them, despite very different win rates (31-39%) and totally different signal logic. Before the fix, avg_rr varied wildly and non-meaningfully across strategies in the original 6-strategy round (0.18 to 0.72) because the flat-2%-of-price denominator didn't reflect each strategy's real stop distance. The new tight clustering (near rr_ratio's typical default of ~2.0, weighted down by ~60-70% of trades exiting near breakeven-risk at their stop) is itself evidence the fix produces sane, comparable numbers.
 
 ---
+
+## 2026-08-16 — Fibonacci overtrading bugfix (entry_tolerance scaled to swing move, not raw price)
+
+**Trigger:** Round `2026-08-16 — Six untested strategies` flagged fibonacci as a strong candidate for the same class of overtrading bug the `combined` strategy had (1187 trades/6mo on 1h, 4423 on 15m — implausibly frequent for a "price within tolerance of a specific Fib level" signal), but did not diagnose or fix it (out of scope for that round).
+
+**Diagnosis (confirmed empirically, not just theoretically):** `backend/app/modules/bot/strategies/fibonacci.py`'s `evaluate()` computed the "is price near a Fib level" distance as `dist_pct = abs(entry - lvl.price) / entry * 100` — **a % of raw price**, compared against `entry_tolerance` (default 0.5%). This does not scale with the size of the underlying swing (`swing_high - swing_low`, recalculated fresh every candle over a 50-candle lookback). For a typical BTC 1h swing over that window (~4-5% move), the gap between adjacent Fib levels (38.2%/50%/61.8%) is roughly 11.8% of the move ≈ 0.5-0.6% of price — i.e. **the tolerance band was comparable in size to the entire gap between levels**, so "near a level" was true far more often than a real, rare confluence signal should be.
+
+**Empirical confirmation** (diagnostic script run inside the rebuilt backend container against real BTCUSDT/1h/6mo candles, `swing_lookback=50`, `min_move_pct=1.0`, `entry_tolerance=0.5`, pre-guard i.e. before the uptrend/downtrend/already-broken-out checks):
+- 4070 evaluated candles; only 3 (0.1%) rejected for "swing too small."
+- **1963 candles (48.2%) were "near a Fib level"** under the old (price-relative) tolerance — roughly half of all candles, not a rare event.
+- Average move_pct among "fired" candles: 4.04% (min 1.17%, max 13.32%) — the bug wasn't confined to tiny/marginal swings near the 1% floor, it applied broadly across typical swing sizes.
+
+**Fix applied:** changed the distance calculation to `dist_pct = abs(entry - lvl.price) / move * 100` — i.e. **% of the swing move**, not of price — where `move = swing_high - swing_low`. Kept the same default numeric value (`entry_tolerance = 0.5`), now correctly interpreted as 0.5% of the move. Docstring (module-level and `evaluate()`) updated to explain the change and why it matters.
+
+**Re-validated the fix with the same diagnostic methodology** before choosing the default: at `entry_tolerance = 0.5` (% of move), pre-guard fire rate dropped to **3.17%** of evaluated candles (129/4070) — in the same ballpark as macd's ~3.6% and lower than bollinger's ~5.2%, both of which the 6-strategy round found to be trading at a plausible frequency. Chose to keep the default numeric value unchanged (0.5) rather than hand-tune a new number — the fix is a units correction, not a re-tune.
+
+**Backtest validation, before vs after (BTCUSDT, 6mo, default params, avg_rr also benefits from the Priority-1 fix above):**
+
+| Timeframe | Metric | Before (bug) | After (fixed) | Change |
+|---|---|---|---|---|
+| 1h | Trades | 1187 | 127 | -89.3% |
+| 1h | Win rate | 31.00% | 32.28% | +1.28pp |
+| 1h | Total PnL % | -64.16% | -5.22% | +58.94pp |
+| 1h | Max drawdown % | 68.79% | 24.92% | -43.87pp |
+| 1h | Avg RR | 0.27 (old broken calc) | 1.32 | n/a (calc method changed) |
+| 15m | Trades | 4423 | 426 | -90.4% |
+| 15m | Win rate | 31.88% | 36.62% | +4.74pp |
+| 15m | Total PnL % | -93.90% | **+44.45%** | +138.35pp |
+| 15m | Max drawdown % | 97.05% | 14.72% | -82.33pp |
+| 15m | Avg RR | 0.19 (old broken calc) | 1.37 | n/a (calc method changed) |
+
+Job IDs: 1h `f1483d36-c3ed-4765-acb4-9de57cb6e47b` (2026-03-02 -> 2026-08-16), 15m `4694db75-61bf-45ea-8add-8689ee8cae05` (2026-02-21 -> 2026-08-14).
+
+**Sanity-checked the 15m +44.45% result for a compounding-inflation artifact** (same method as the macd/triple_ema_stoch_rsi check below): signed per-trade R-multiple average +0.099R, sum of signed R across 426 trades = +42.0R, non-compounding counterfactual (fixed $100 risk/trade on $10,000 initial) = +42.00% vs actual compounded +44.45% — very close, negligible compounding effect. This is a modest, credible real edge on this single backtest window, not a compounding illusion.
+
+**Assessment:** same pattern as the `combined` strategy's earlier threshold fix — this is a genuine, well-reasoned unit-of-measurement bug (not a parameter retune), and fixing it converts a catastrophic, statistically-meaningless overtrading result into sane numbers. The 15m result is now net-positive (+44.45%) with a believable drawdown (14.72%); the 1h result is still net-negative but no longer catastrophic (-5.22%, 24.92% max DD). **Neither clears the spec's live-readiness bar** (55% win rate over 100+ trades, <8% max DD) — win rates are 32-37%, well short, and 1h is still unprofitable. **Not recommended for testnet/live deployment on this evidence** — this round is a bugfix validation, not a deployment recommendation. Worth a follow-up cross-symbol/cross-regime check before drawing further conclusions, same caveat as every other strategy in this log.
+
+---
+
+## 2026-08-16 — macd / triple_ema_stoch_rsi 15m PnL verification (compounding vs real edge)
+
+**Trigger:** Round `2026-08-16 — Six untested strategies` flagged macd (+186.20% PnL, 38.99% win rate, avg RR 0.19) and triple_ema_stoch_rsi (+30.66% PnL, 35.25% win rate, avg RR 0.21) on 15m as needing scrutiny — that combination of sub-40% win rate and sub-1 avg RR should not normally produce strongly positive PnL, raising a compounding/position-sizing-artifact question. Deferred until after the avg_rr fix above, since the old avg_rr (flat-2%-of-price denominator) was itself unreliable and could have been distorting the picture.
+
+**Method:** Re-ran macd and triple_ema_stoch_rsi on BTCUSDT, 1h and 15m, 6mo, default params, on the rebuilt (fixed) backend. Then, using the now-available real `stop_loss` on every trade, computed a **signed** per-trade R-multiple directly from entry/exit/stop/side (same method validated against supertrend above), and compared the resulting linear (non-compounding) equivalent return against the actual (compounding, 1%-of-current-balance sizing) result, to isolate how much of the headline % return is a real per-trade edge vs an amplification effect of compounding position sizing.
+
+**Results (job IDs: macd 1h `71e78bb2-97d6-4148-a530-33ffc784b925`, macd 15m `76be3bff-f8af-4ce7-a88e-155a4cd66fab`, tesr 1h `476150cb-714b-4a2e-8bdf-085c747c5d9a`, tesr 15m `06b4c505-c5ec-408c-9f69-7931a5ab9e52`):**
+
+| Strategy/TF | Trades | Win rate | Total PnL % | Max DD % | Avg RR (fixed calc) |
+|---|---|---|---|---|---|
+| macd 1h | 147 | 34.69% | +5.46% | 12.67% | 1.34 |
+| macd 15m | 672 | 38.84% | +180.91% | 16.21% | 1.39 |
+| tesr 1h | 157 | 31.21% | -9.81% | 19.86% | 1.30 |
+| tesr 15m | 590 | 35.25% | +30.66% | 26.70% | 1.35 |
+
+(1h numbers are effectively unchanged from Round 1/prior rounds, as expected — this fix doesn't touch macd/triple_ema_stoch_rsi strategy logic, only the metrics calc. macd 15m trade count/PnL differ marginally from the original 6-strategy round — 672 trades both times, but wins/losses shifted by 1 and final balance moved from $28,619.71 to $28,090.52 — this is expected data-window drift from re-fetching live Binance candles hours later in the day, not a regression.)
+
+**Signed-R reconciliation and compounding check:**
+
+| Strategy/TF | Avg signed R/trade | Sum signed R | Non-compounding equivalent (fixed $100/trade risk on $10k) | Actual (compounding) PnL % | Compounding effect |
+|---|---|---|---|---|---|
+| macd 15m | **+0.165R** | +111.0R | +111.00% | **+180.91%** | **~1.63x amplification** |
+| tesr 15m | **+0.058R** | +34.0R | +34.00% | +30.66% | ~1.0x (negligible, slightly negative from loss sequencing) |
+
+**Conclusion — both things are true, not either/or:**
+1. **The underlying per-trade edge is real, not a metric artifact.** Both strategies show a genuine positive signed R-multiple computed directly from real entry/exit/stop prices (macd15m +0.165R/trade over 672 trades, tesr15m +0.058R/trade over 590 trades) — this is not the same broken calculation that produced misleadingly-low avg RR figures before the Priority-1 fix.
+2. **Compounding position sizing (1% of *current* balance per trade, not fixed) meaningfully inflates macd15m's headline number**: the same real edge produces +111.00% in a fixed-risk/non-compounding equivalent vs the actual reported **+180.91%** — roughly 1.6x amplification purely from growing position sizes as the account compounds. This confirms part of the original suspicion: the "+186%"-class headline number is partly a compounding effect layered on top of a real edge, not the edge itself being illusory, and should not be read as "this strategy returns 180% reliably" — a large chunk of that magnitude depends on this specific win/loss sequence compounding favorably.
+3. **Compounding is not a universal inflator — it's path-dependent.** For triple_ema_stoch_rsi 15m, the compounding and non-compounding results are nearly identical (30.66% vs 34.00%, actually slightly lower) — its win/loss sequence didn't happen to compound favorably. This rules out "any large 15m PnL number is fake" as a blanket claim.
+4. **Neither strategy is being recommended for testnet/live deployment on this evidence.** Both remain below the spec's 55% win-rate/100+-trade bar (38.84% and 35.25% respectively), this is still a single BTCUSDT/Feb-Aug-2026 regime, and macd15m's magnitude specifically should be treated with real caution given the compounding-amplification finding above — a different trade sequence (different symbol, different window) could compound far less favorably even with the same underlying per-trade edge.
+
+---
