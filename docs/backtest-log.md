@@ -386,3 +386,39 @@ Job IDs: 1h `f1483d36-c3ed-4765-acb4-9de57cb6e47b` (2026-03-02 -> 2026-08-16), 1
 **Overall conclusion across all 9 strategies now tested with full multi-year rigor: none clear the deployability bar (max drawdown <8%).** Combined with the round-above finding that the already-deployed `supertrend` also fails at this depth, the honest state of the project is: nothing currently implemented in `stock-soup` has demonstrated durable, risk-controlled edge over a realistic multi-year, multi-regime test. See `docs/execution-log.md` for what this means going forward.
 
 ---
+
+## 2026-08-17 (overnight) — time_series_momentum first backtest: 3 symbols, default params, 5 years, 1d
+
+**Method:** `POST /lab/backtest` per symbol, default params (`lookback_days=90, rebalance_days=7, atr_period=14, atr_multiplier=3.0, tp_atr_multiplier=8.0`) — deliberately untouched across all three symbols to get genuine out-of-sample evidence (same params chosen from research, not tuned per-symbol after seeing results). BTCUSDT, ETHUSDT, SOLUSDT, `1d` timeframe, 60 months.
+
+| Symbol | Trades | Win% | Total PnL% | Max DD% | Avg RR |
+|---|---|---|---|---|---|
+| BTCUSDT | 44 | 38.64% | **+15.03%** | 13.94% | 1.58 |
+| ETHUSDT | 34 | 26.47% | -3.83% | 16.33% | 1.36 |
+| SOLUSDT | 32 | 34.38% | **+4.52%** | 13.44% | 1.48 |
+
+**Read:** mixed (2 of 3 positive) but this is by far the most *consistent* result of any strategy tested in this log — drawdown stays in a tight 13-16% band across three different assets, versus everything else tested swinging wildly (e.g. `supertrend` 22-36% DD, `bollinger` 40-50% DD with a wildly timeframe-inconsistent +230%/-0.35% split). Still doesn't clear the spec's 8% drawdown ceiling on any symbol, and trade counts (32-44) are on the low end of statistically meaningful — inherent to a weekly-rebalance strategy over "only" 5 years, not fixable without either more history or abandoning the low-frequency design that's the whole point of this strategy.
+
+**Known caveat, visible directly in the trade log:** several trades show very different entry times sharing an identical, much-later exit time — this is the documented architecture limitation (`backend/app/modules/bot/strategies/time_series_momentum.py` docstring): the shared backtester never closes a position on "signal reversed," only on stop-loss/take-profit, so multiple rebalance-period positions stack up (up to the 3-concurrent limit) and get cleared together later than a textbook single-flipping-position TSMOM would. This means the current result is a genuine backtest of *this specific adapted implementation*, not a clean replication of the academic strategy — real, but should be read with that caveat attached.
+
+**Not yet done, flagged for Poom's review rather than attempted unsupervised:** implementing proper "close on signal reversal" in `run_backtest` as an opt-in behavior (so the other 9 strategies' already-logged numbers are provably unaffected) would remove this confound and give a cleaner test. This touches shared, decision-critical code that every prior finding in this log depends on — holding off on making that change without Poom's review first, rather than risk a subtle regression while unsupervised.
+
+---
+
+## 2026-08-17 (overnight, continued) — time_series_momentum, canonical academic params
+
+**Method:** same as above, but with `lookback_days=365, rebalance_days=30` — the literal parameter specification from Moskowitz, Ooi & Pedersen's original "Time Series Momentum" paper (12-month lookback, monthly rebalance), not chosen after seeing any of this codebase's results. Same 3 symbols, same 60-month window, same untouched-across-symbols discipline as the prior entry.
+
+| Symbol | Trades | Win% | Total PnL% | Max DD% | Avg RR |
+|---|---|---|---|---|---|
+| BTCUSDT | 44 | 36.36% | +11.51% | 9.20% | 1.51 |
+| ETHUSDT | 44 | 29.55% | +2.40% | 8.82% | 1.43 |
+| SOLUSDT | 42 | 38.10% | +12.25% | 8.80% | 1.54 |
+
+**Read:** this is the strongest, most consistent result across the entire validation project to date. **All three symbols are net-positive** (unlike the weekly-rebalance variant above, where ETHUSDT was slightly negative), and max drawdown is tightly clustered at **8.80-9.20%** across three different assets — remarkably close to the spec's 8% ceiling, and dramatically more consistent than anything else tested (contrast: every one of the other 9 strategies showed drawdown swinging by 10-40+ percentage points across symbols/timeframes). Trade counts (42-44) clear the ~20-30 statistical-meaningfulness floor used throughout this log, though not by a huge margin.
+
+**This does not yet mean "ready to deploy."** Still technically above the 8% drawdown ceiling on every symbol (barely). The known position-stacking architecture caveat from the entry above still applies unchanged — this result has the same confound. And this is still one parameter specification (albeit the most academically canonical one) tested on one 5-year historical window — the same regime-dependency caution that applies to every other finding in this log applies here too, just with meaningfully better supporting evidence than anything tested before it.
+
+**Recommendation:** this is the first strategy in the project worth investing further engineering time in — specifically, resolving the position-stacking confound (see caveat above) before drawing a final conclusion, since 8.8-9.2% is close enough to 8% that removing that confound could plausibly move the result either direction. That work needs Poom's review before starting (shared code, decision-critical).
+
+---

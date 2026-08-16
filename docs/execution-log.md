@@ -139,3 +139,19 @@ Market regime context (`docs/research-log.md`, 2026-08-16): BTC has been in a ch
 **Confidence:** high on the negative finding (9 strategies, consistent methodology, real multi-year data, several independent bugs already found and fixed along the way rather than papered over). Low confidence, so far, on any specific path forward — that's an open design question, not yet backtested.
 
 ---
+
+## 2026-08-17 (overnight) — time_series_momentum built and backtested: first genuinely promising result
+
+**Trigger:** direct follow-up to the entry above. Built a new strategy (`backend/app/modules/bot/strategies/time_series_momentum.py`) grounded in the time-series-momentum research cited there, and backtested it while Poom slept. Full numbers: `docs/backtest-log.md`, two 2026-08-17 (overnight) entries.
+
+**What was found:** using the literal canonical academic parameter specification (12-month lookback, monthly rebalance — Moskowitz/Ooi/Pedersen's original paper, not chosen after seeing this codebase's data), the strategy was net-positive on **all three symbols tested** (BTCUSDT +11.51%, ETHUSDT +2.40%, SOLUSDT +12.25%), with max drawdown tightly clustered at **8.80-9.20%** across all three — by far the most consistent result of any of the now-10 strategies tested in this project. A second parameter set (weekly rebalance, 90-day lookback) was also tested and was directionally similar but less consistent (one symbol slightly negative).
+
+**This is not a deployment recommendation.** Two things hold it back from that: (1) drawdown is still technically above the spec's 8% ceiling on every symbol, just barely; (2) a known architecture limitation — the shared backtester only exits positions via stop-loss/take-profit, never on "the strategy's signal reversed," so this implementation approximates pure TSMOM rather than replicating it exactly (documented in the strategy file and in `docs/backtest-log.md`). Given the result sits this close to the 8% bar, resolving that confound could plausibly move it either direction — it needs to happen before this strategy is trusted further.
+
+**Action taken:** built and backtested only. No changes to `/bot/config` (still `supertrend`, still suspended — that setting remains evidence-free from the prior entry's finding). Registered in the backtester (`/lab/backtest`, `/lab/compare`) only — not yet wired into the live executor (separate follow-up, needs the executor's hardcoded 15m-candles-for-every-strategy assumption addressed first, see `docs/trading-bot-spec.md`).
+
+**Deliberately not attempted overnight:** implementing "close position on signal reversal" in `run_backtest` to resolve the position-stacking confound. This touches shared code that every strategy's already-logged backtest numbers in this file and `docs/backtest-log.md` depend on — a regression there would undermine trust in everything validated so far, not just this one strategy. Held for Poom's review rather than risking that unsupervised. If approved, the safe approach is: implement as an explicitly opt-in behavior (only strategies that set a new flag get the new exit logic), then re-run at least one or two of the other 9 strategies' backtests immediately after to confirm their numbers are byte-for-byte unchanged, before trusting any updated `time_series_momentum` numbers.
+
+**Confidence:** medium — genuinely the best evidence seen in this project (consistency across 3 uncorrelated-ish assets using an untuned, literature-standard parameter set is a meaningfully different quality of signal than anything else tested), but capped by the unresolved architecture confound and by this still being one historical window.
+
+---
