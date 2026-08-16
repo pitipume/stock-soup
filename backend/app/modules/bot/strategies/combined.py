@@ -36,13 +36,29 @@ SL/TP anchor:
   the most currently reliable strategy.
 
 Default params:
-  threshold           float = 0.3   — minimum weighted score to fire
+  threshold           float = 0.6   — minimum weighted score to fire
   conflict_max        float = 0.15  — max opposing score (above this = skip)
   rsi_weight          float = 0.5   — overridden by bot_tasks from DB
   macd_weight         float = 0.5
   fibonacci_weight    float = 0.5
   bollinger_weight    float = 0.5
   elliott_wave_weight float = 0.5
+
+BUGFIX (2026-08-16, backtest round 3): threshold was 0.3, which is BELOW a
+single sub-strategy's default neutral weight (0.5). That meant any ONE
+sub-strategy firing alone, with zero opposition, already cleared the
+threshold — the "weighted vote requiring confluence" this module's docstring
+describes never actually applied. In practice this made `combined` behave
+as an OR of all 5 sub-strategies' raw signals (worse than any single one,
+since it inherited every strategy's whipsaws). Confirmed via
+BTCUSDT/1h/6mo backtest: 1232 trades, -59% PnL, 76% drawdown — while the
+best individual sub-strategy (supertrend, not even wrapped by combined)
+produced 80 trades and RSI alone produced 314.
+Raised threshold to 0.6 so that either (a) two neutral (0.5-weight)
+strategies must agree, since 2*0.5=1.0 > 0.6 but 1*0.5=0.5 < 0.6, or
+(b) a single strategy with a genuinely proven win-rate weight >= 0.6 can
+act alone once it has track record. See docs/backtest-log.md Round 3 for
+the validation backtest after this change.
 """
 from dataclasses import dataclass, field
 from typing import Literal, Optional, List
@@ -95,7 +111,7 @@ def evaluate(candles: list, params: Optional[dict] = None) -> Signal:
       rsi_weight, macd_weight, fibonacci_weight, bollinger_weight, elliott_wave_weight
     """
     p = params or {}
-    threshold    = float(p.get("threshold", 0.3))
+    threshold    = float(p.get("threshold", 0.6))
     conflict_max = float(p.get("conflict_max", 0.15))
 
     weights = {

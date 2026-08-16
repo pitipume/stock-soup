@@ -116,7 +116,8 @@ The kill switch: if total portfolio drops 10% from its high-water mark, the bot:
 - As testnet data accumulates, weights shift automatically toward strategies that are working now
 - File: `backend/app/modules/bot/strategies/combined.py`
 - Switch via: `PATCH /bot/config {"active_strategy": "combined"}`
-- Key params: `threshold` (default 0.3), `conflict_max` (default 0.15)
+- Key params: `threshold` (default 0.6, fixed from 0.3 on 2026-08-16 — see below), `conflict_max` (default 0.15)
+- **BUGFIX (2026-08-16):** default `threshold` was 0.3, below a single sub-strategy's neutral default weight (0.5). That let any ONE sub-strategy fire the combined signal alone with zero opposition, defeating the confluence design — backtest (BTCUSDT/1h/6mo) showed 1232 trades, -59% PnL, 76% drawdown. Raised threshold to 0.6 so at least two neutral-weight strategies must agree (or one strategy with a proven win-rate weight ≥0.6 can act alone). See `docs/backtest-log.md` Round 3 for the validation backtest. `combined` was NOT applied to the bot config — this is a code-level default fix only, still evidence-gathering.
 
 ---
 
