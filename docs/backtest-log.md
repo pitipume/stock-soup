@@ -328,3 +328,28 @@ Job IDs: 1h `f1483d36-c3ed-4765-acb4-9de57cb6e47b` (2026-03-02 -> 2026-08-16), 1
 4. **Neither strategy is being recommended for testnet/live deployment on this evidence.** Both remain below the spec's 55% win-rate/100+-trade bar (38.84% and 35.25% respectively), this is still a single BTCUSDT/Feb-Aug-2026 regime, and macd15m's magnitude specifically should be treated with real caution given the compounding-amplification finding above — a different trade sequence (different symbol, different window) could compound far less favorably even with the same underlying per-trade edge.
 
 ---
+
+## 2026-08-16 (evening) — 5-year regime validation: supertrend/fibonacci/macd, BTCUSDT, 1h+4h
+
+**Method:** Custom batch script (`/lab/backtest` per combo, submit → poll `/lab/jobs/{id}` → collect metrics), run directly by the orchestrating session rather than an LLM calling each combination individually — the grid itself is not LLM-mediated, keeping this cheap regardless of grid size. Requested 60 months (5 years) per combo; both timeframes returned ~96-98% coverage of that request (limited by how far back Binance's public klines actually go, not a script issue).
+
+**Motivation:** every strategy validated so far (including the already-deployed `supertrend`) had only been tested on a single ~6-month window (Feb-Aug 2026). Poom asked whether deeper history (multiple years, multiple regimes) would change the picture, rather than trusting a short window. This round answers that directly.
+
+**Results — BTCUSDT, full period per timeframe (~2021-09/10 → 2026-08-16, 3year+):**
+
+| Strategy | TF | Trades | Win% | Total PnL% | Max DD% | Avg RR |
+|---|---|---|---|---|---|---|
+| supertrend | 1h | 806 | 32.88% | **-16.52%** | **36.07%** | 1.32 |
+| supertrend | 4h | 213 | 32.39% | **-7.74%** | **22.98%** | 1.31 |
+| fibonacci | 1h | 1349 | 31.95% | -51.09% | 65.25% | 1.32 |
+| fibonacci | 4h | 320 | 29.69% | -32.00% | 46.04% | 1.30 |
+| macd | 1h | 1616 | 33.66% | -1.93% | 43.96% | 1.34 |
+| macd | 4h | 389 | 31.11% | -26.01% | 32.50% | 1.31 |
+
+**Every combination is net-negative over the full period.** Critically, `supertrend`/1h — the strategy applied to `/bot/config` on 2026-08-16 based on its 6-month result (+9.75% PnL, 8.00% max DD, the reason it was chosen over everything else) — is **-16.52% PnL with 36.07% max drawdown** (4.5x the 8% ceiling that was the actual decision criterion) over the full ~5-year history. `supertrend`/4h is also negative (-7.74%, 22.98% DD).
+
+**Known limitation of this run:** the script also computed a `recent6mo`/`older` sub-split using a simplified 100-base compounding chain over each trade's `pnl_pct` (position-relative), which does NOT match the real backtester's risk-scaled position sizing (1% of *current account* balance per trade). This produced internally inconsistent numbers (e.g. `older` period showing ~100% drawdown / near-total wipeout for supertrend/1h, which doesn't reconcile with the real, correctly-computed full-period max drawdown of 36.07% from the same trades). **The recent/older split columns in the raw CSV should be disregarded** — only the `full_*` columns above (computed the same validated way as every prior round in this log) are trustworthy.
+
+**Conclusion:** the 2026-08-16 decision to deploy `supertrend` to `/bot/config` was very likely based on a favorable, non-representative 6-month slice, not a durable edge. This is exactly the regime-dependency risk flagged as unresolved since the very first round of this log. See `docs/execution-log.md` for the resulting decision update. Bot remained suspended throughout — no testnet track record was affected by this finding.
+
+---

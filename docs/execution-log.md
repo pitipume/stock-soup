@@ -109,3 +109,17 @@ Market regime context (`docs/research-log.md`, 2026-08-16): BTC has been in a ch
 **Confidence:** high on the bug diagnoses and fixes themselves (both empirically confirmed via before/after backtests and, for fibonacci, an independent diagnostic script against real market data). Low-to-none on any of fibonacci/macd/triple_ema_stoch_rsi being close to deployable — that determination is unchanged by this round's work, which was scoped to validation/bugfixing, not a new recommendation.
 
 ---
+
+## 2026-08-16 (evening) — supertrend decision REVERSED: 5-year test shows no durable edge
+
+**Trigger:** Poom asked whether the supertrend decision would hold up over 5 years / multiple regimes instead of the original 6-month window. See `docs/backtest-log.md` (`2026-08-16 (evening) — 5-year regime validation`) for full methodology and numbers.
+
+**Finding:** it does not hold up. `supertrend`/1h — deployed to `/bot/config` earlier the same day specifically because it was the only strategy that was net-positive (+9.75%) with drawdown at/under the spec's 8% ceiling (8.00% exactly) — returns **-16.52% with 36.07% max drawdown** over the full ~5-year history available. `supertrend`/4h is also negative (-7.74%, 22.98% DD). `fibonacci` and `macd` (both re-tested with their bugs already fixed) are negative across the board too, on both 1h and 4h.
+
+**Reassessment of the earlier decision:** the 6-month positive result was very likely a favorable, non-representative slice of a single regime, not evidence of durable edge. This was the exact risk flagged as unresolved in the very first entry in this log ("thin backtest history... regime mismatch... direction of bias on true edge unknown") and only partially addressed by round 2's multi-symbol (not multi-year) test. The multi-symbol consistency that raised confidence earlier was real, but insufficient — consistency across BTC/ETH/SOL within the same ~6-month calendar window does not imply consistency across time, and it didn't.
+
+**Action taken:** none yet — `/bot/config` still shows `active_strategy: supertrend`, bot still suspended. This entry is a flag, not an automatic revert: leaving the record accurate (this decision's evidentiary basis no longer holds) while Poom decides the next step (test remaining strategies over the same 5-year window, and/or research alternative approaches). The bot's continued suspension means no real or testnet-fake capital was ever at risk from this reversal — the cost of being wrong here was purely research time, which is the entire point of validating before deploying.
+
+**Confidence:** high that the specific 6-month-based case for supertrend is no longer supported. Not yet resolved: whether any of the 9 strategies in this codebase has durable multi-year edge, or whether a different approach entirely is needed — open questions for the next round.
+
+---
