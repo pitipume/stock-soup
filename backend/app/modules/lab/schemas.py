@@ -17,6 +17,7 @@ class BacktestTrade(BaseModel):
     side: str
     entry_price: float
     exit_price: float
+    stop_loss: float  # the position's actual stop-loss price, used for avg_rr calc (not a flat 2% guess)
     pnl_usdt: float
     pnl_pct: float
     outcome: str

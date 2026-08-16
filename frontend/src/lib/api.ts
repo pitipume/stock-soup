@@ -140,6 +140,7 @@ export interface BacktestTrade {
   side: string;
   entry_price: number;
   exit_price: number;
+  stop_loss: number;
   pnl_usdt: number;
   pnl_pct: number;
   outcome: string;

@@ -212,3 +212,49 @@ The first attempt at this validation (`job_id: 22db42e0-1cd7-404e-ab66-2f418641f
 - **None of the 6 clear the bar for testnet or a live alert on this evidence.** The two with positive headline numbers on 15m (macd, triple_ema_stoch_rsi) have an unresolved question about whether the return is a real edge or a backtest-mechanics artifact of compounding position sizing on a large trade count; the two with the worst numbers (fibonacci, elliott_wave-15m) look structurally broken in the same way `combined` was before its fix.
 
 ---
+
+## 2026-08-16 — avg_rr metric bugfix (hardcoded 2% risk -> real per-trade stop distance) + supertrend reconciliation
+
+**Trigger:** Round-1 execution-log entry flagged an unresolved concern — supertrend's reported avg_rr (1.49) at 37.5% win rate implied a slightly negative naive expectancy that didn't obviously reconcile with the reported +9.75% total PnL.
+
+**Diagnosis (confirmed):** `backend/app/modules/lab/backtester.py`'s `run_backtest`, in the metrics section, computed `avg_rr` per trade using `risk = abs(t.entry_price - (t.entry_price * (1 - 0.02)))` — a **flat 2% of entry price**, applied identically to every trade regardless of strategy or actual stop distance. This is inconsistent with position sizing earlier in the same function, which correctly uses `stop_dist = abs(signal.entry_price - signal.stop_loss)` — the real per-trade stop distance. `BacktestTrade` (`backend/app/modules/lab/schemas.py`) did not store `stop_loss`, so the metrics section had no way to reference the real value and fell back to a guess.
+
+**Fix applied:**
+- `BacktestTrade` schema: added `stop_loss: float` field.
+- `backtester.py`: both `BacktestTrade(...)` construction sites (SL/TP-hit close, and end-of-backtest forced close) now record `stop_loss=round(pos["stop_loss"], 4)` from the actual open position.
+- `avg_rr` calc changed to `risk = abs(t.entry_price - t.stop_loss)` — the real stop distance — instead of the flat 2% guess.
+- `frontend/src/lib/api.ts`: `BacktestTrade` interface updated to include `stop_loss: number` for consistency.
+- Rebuilt `backend`/`worker` images (`docker-compose up -d --build backend worker`) — code is baked into images, confirmed via `docker exec` that the rebuilt container has the fix before re-testing (same operational lesson as the `combined`-fix round).
+
+**Re-ran supertrend BTCUSDT/1h/6mo** (job_id `d188c463-24c1-4744-b859-ed25107996fc`, date range 2026-03-03 -> 2026-08-16 — near-identical window to the original round-1 run, few-hour drift from live data refetch):
+
+| Metric | Old (flat 2% bug) | New (real stop distance) | Change |
+|---|---|---|---|
+| Total trades | 80 | 80 | unchanged (fix doesn't touch trade generation) |
+| Win rate | 37.50% | 37.50% | unchanged |
+| Total PnL % | +9.75% | +9.75% | unchanged |
+| Max drawdown % | 8.00% | 7.99% | trivial (data-window rounding, not the fix) |
+| **Avg RR** | **1.49** | **1.33** | **-0.16** |
+
+Trade count, win rate, PnL, and max DD are unaffected by this fix (as expected — it only changes a metrics-section calculation, not trade generation or sizing). Only `avg_rr` moved, modestly (1.49 -> 1.33).
+
+**Does this resolve the reconciliation flag? Partially, and the fuller answer is more interesting than "yes/no":**
+
+The flat-2% bug was real and worth fixing, but fixing it alone does **not** fully explain the round-1 reconciliation concern, because `avg_rr` (both before and after this fix) is computed as an **unsigned** ratio: `abs(exit_price - entry_price) / risk`, averaged across *all* trades including losers. A trade that exits at its stop-loss contributes `risk/risk = 1.0` to this average (not `-1.0`), and a trade that exits at take-profit contributes roughly `rr_ratio` (e.g. ~2.0). So `avg_rr` is really "average reward:risk ratio traveled, ignoring direction" — a real descriptive stat, but **not** the signed R-multiple expectancy that the round-1 back-of-envelope formula (`win_rate × avg_rr − loss_rate × 1`) implicitly assumed. That formula was always going to misfire when fed an unsigned avg_rr, independent of whether the risk denominator used a flat 2% or the real stop.
+
+To properly check reconciliation, we computed a **signed** per-trade R-multiple directly from the trade log (now possible because `stop_loss` is stored on each trade): `R = (exit_price - entry_price)/risk` for longs (sign-preserving), `R = (entry_price - exit_price)/risk` for shorts, using the real stop distance as 1R.
+
+**Supertrend signed-R reconciliation (from the 80-trade log above):**
+- avg signed R-multiple (true expectancy/trade): **+0.123R**
+- avg win R: +1.94, avg loss R: -0.97, win rate 37.5%, loss rate 62.5% → expectancy = 0.375×1.94 + 0.625×(-0.97) = **+0.123R**
+- Sum of signed R across 80 trades: **+9.85R**
+- Actual reported total PnL: **+9.75%** (risk_pct=1% per trade, so 1R ≈ ~1% of balance at entry)
+- **+9.85R (theoretical, from trade-level signed R) vs +9.75% (actual, compounded) — these reconcile almost exactly.**
+
+**Conclusion:** the flat-2% bug was real, confirmed, and fixed — but it turns out it was never the actual source of the round-1 "doesn't reconcile" puzzle. The real source was applying a signed-expectancy formula to an unsigned metric. Once stop_loss is available per trade (this fix) and a properly signed R-multiple is computed directly from real trade outcomes, supertrend's economics **do** reconcile cleanly with its reported PnL. This is a materially better answer than "unresolved" — it demonstrates the strategy's numbers are internally consistent, not resting on an unexplained gap.
+
+**Note for future use of the `avg_rr` field:** it remains, by design/unchanged scope, an unsigned average reward:risk ratio across all trades (now correctly computed against real stop distances, but still not sign-aware). Do not plug it directly into a signed expectancy formula in future analysis — compute a signed R-multiple from `entry_price`/`exit_price`/`stop_loss`/`side` per trade instead, as done above. Not changing the field's public meaning in this pass (out of scope; would need a docs/API-consumer discussion first) — flagging as a possible follow-up only.
+
+**Cross-check — avg_rr now clusters sanely across unrelated strategies:** re-running fibonacci, macd, and triple_ema_stoch_rsi below (same round) with the fix in place produced avg_rr values of 1.30-1.39 across all of them, despite very different win rates (31-39%) and totally different signal logic. Before the fix, avg_rr varied wildly and non-meaningfully across strategies in the original 6-strategy round (0.18 to 0.72) because the flat-2%-of-price denominator didn't reflect each strategy's real stop distance. The new tight clustering (near rr_ratio's typical default of ~2.0, weighted down by ~60-70% of trades exiting near breakeven-risk at their stop) is itself evidence the fix produces sane, comparable numbers.
+
+---

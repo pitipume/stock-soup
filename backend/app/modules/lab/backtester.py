@@ -159,6 +159,7 @@ def run_backtest(
                     side=pos["side"],
                     entry_price=round(pos["entry_price"], 4),
                     exit_price=round(exit_price, 4),
+                    stop_loss=round(pos["stop_loss"], 4),
                     pnl_usdt=round(pnl, 4),
                     pnl_pct=round(pnl_pct, 4),
                     outcome=outcome,
@@ -214,6 +215,7 @@ def run_backtest(
             side=pos["side"],
             entry_price=round(pos["entry_price"], 4),
             exit_price=round(last_close, 4),
+            stop_loss=round(pos["stop_loss"], 4),
             pnl_usdt=round(pnl, 4),
             pnl_pct=round(pnl_pct, 4),
             outcome="win" if pnl > 0 else ("loss" if pnl < 0 else "breakeven"),
@@ -235,7 +237,10 @@ def run_backtest(
 
     rr_vals = []
     for t in trades:
-        risk = abs(t.entry_price - (t.entry_price * (1 - 0.02)))  # approx
+        # Use the position's actual stop-loss distance (real risk taken), not a flat 2% guess.
+        # A hardcoded 2% here was inconsistent with position sizing above, which already uses
+        # the real stop_dist = abs(signal.entry_price - signal.stop_loss) per trade.
+        risk = abs(t.entry_price - t.stop_loss)
         reward = abs(t.exit_price - t.entry_price)
         if risk > 0:
             rr_vals.append(reward / risk)

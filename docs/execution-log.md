@@ -72,3 +72,26 @@ Market regime context (`docs/research-log.md`, 2026-08-16): BTC has been in a ch
 **Bot deliberately left `is_suspended: true`.** Not resumed. Reason: starting the actual testnet validation clock (the 30-consecutive-day gate in `docs/trading-bot-spec.md`) only means something on a stable, continuously-running deployment — currently this is Poom's local laptop, which cannot guarantee that (see hosting discussion, `~/.claude/agents/lucy-trading-lead.md` hard constraints). Resuming now would risk burning testnet days that get invalidated by a laptop closing. Resume only once a stable deployment (VPS or laptop kept genuinely 24/7) is actually in place.
 
 **Confidence:** Medium — meaningfully higher than the round-1 entry given multi-symbol confirmation, but still capped by single-timeframe/single-regime evidence and the unresolved RR reconciliation.
+
+---
+
+## 2026-08-16 (later) — RR reconciliation bugfix: confidence update on the deployed supertrend decision
+
+**Trigger:** Follow-up to the two entries above. The round-1 entry flagged an unresolved metric-definition question (avg RR 1.49 at 37.5% win rate didn't obviously reconcile with +9.75% PnL); the later entry noted this was "not re-verified before" the decision to apply supertrend to `/bot/config`. This round resolves it. Full diagnosis, fix, and validation detail is in `docs/backtest-log.md` (`2026-08-16 — avg_rr metric bugfix` and `2026-08-16 — Fibonacci overtrading bugfix` entries) — this entry summarizes what it changes for the supertrend decision specifically.
+
+**What was found:** the flagged concern had two layered causes, not one:
+1. A real bug — `avg_rr` used a hardcoded flat 2% "risk" for every trade instead of each position's actual stop-loss distance, inconsistent with position sizing elsewhere in the same function. Confirmed and fixed (`backend/app/modules/lab/backtester.py`, `schemas.py`, `frontend/src/lib/api.ts`). Re-running supertrend BTCUSDT/1h/6mo: avg_rr moved 1.49 -> 1.33; trades/win-rate/PnL/max-DD are all unchanged (74/50-trade breakdown, 37.50%, +9.75%, ~8.00% — this fix doesn't touch trade generation, only the metrics calc).
+2. A deeper, previously-unnoticed issue — `avg_rr` (even after the fix) is an **unsigned** ratio, not a true win/loss-weighted expectancy, so it was never going to cleanly "reconcile" via the simple formula the round-1 entry used, independent of the flat-2% bug. Using the now-available real stop_loss to compute a properly **signed** R-multiple per trade directly from the trade log, supertrend's expectancy comes out to +0.123R/trade, summing to +9.85R across 80 trades — which lines up almost exactly with the actual +9.75% total return.
+
+**Does this change confidence in the supertrend decision already applied to `/bot/config`?**
+
+**Yes, modestly upward — the unresolved flag from round 1 is now resolved, and resolved in supertrend's favor, not against it.** The concern was never "supertrend is unprofitable" — the raw PnL/win-rate/drawdown numbers were never in question. The concern was a nagging "the RR math doesn't add up, so maybe something about this result isn't trustworthy." That specific concern is now closed: the trade-level economics are internally consistent (signed R-multiple sum reconciles with reported PnL to within rounding), and the source of the earlier confusion (an unsigned metric being read as a signed one, compounded by a real-but-secondary flat-2% calculation bug) is identified and explained, not just patched over.
+
+**What this does NOT change:**
+- Still single-symbol-confirmed-multi (BTCUSDT/ETHUSDT/SOLUSDT per the earlier round-2 entry), single-timeframe (1h), single calendar regime (Feb-Aug 2026) — the regime-dependency risk from the original round-1 entry is untouched by this fix.
+- Still below the spec's live-readiness bar (37.5% win rate vs the 55% gate) — this fix does not and could not change that; positive expectancy with a sub-40% win rate is a legitimate but fragile strategy shape, as already noted.
+- No config change made this round. `active_strategy` remains `supertrend`, bot remains `is_suspended: true`, per standing instruction not to touch `/bot/config` in a validation-only round.
+
+**Confidence:** raised from "medium, capped by the unresolved RR flag" (prior entry) to **medium, with the RR flag now closed rather than open**. Still not high — the regime/timeframe/win-rate caveats from the original decision are unchanged and remain the binding constraints, not this metric question.
+
+---
