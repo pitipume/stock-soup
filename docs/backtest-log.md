@@ -353,3 +353,36 @@ Job IDs: 1h `f1483d36-c3ed-4765-acb4-9de57cb6e47b` (2026-03-02 -> 2026-08-16), 1
 **Conclusion:** the 2026-08-16 decision to deploy `supertrend` to `/bot/config` was very likely based on a favorable, non-representative 6-month slice, not a durable edge. This is exactly the regime-dependency risk flagged as unresolved since the very first round of this log. See `docs/execution-log.md` for the resulting decision update. Bot remained suspended throughout — no testnet track record was affected by this finding.
 
 ---
+
+## 2026-08-17 — 5-year regime validation, round 2: remaining 6 strategies
+
+**Method:** same batch script/approach as the round above, extended to the 6 strategies not yet tested at this depth: `rsi`, `bollinger`, `three_golden`, `triple_ema_stoch_rsi`, `elliott_wave`, `combined`. BTCUSDT, 1h + 4h, requested 60 months. Runtime: ~3 hours total (this batch is far more compute-heavy than round 1 — several of these strategies fire much more often, and `combined` evaluates all 5 sub-strategies per candle).
+
+**Results — full period, BTCUSDT (dates/coverage vary slightly by strategy, see notes):**
+
+| Strategy | TF | Trades | Win% | Total PnL% | Max DD% | Avg RR | Coverage |
+|---|---|---|---|---|---|---|---|
+| rsi | 1h | 3558 | 26.98% | -99.94% | 99.96% | 1.27 | 60mo (98.1%) |
+| rsi | 4h | 1014 | 27.32% | -86.64% | 88.32% | 1.27 | 60mo (96.4%) |
+| bollinger | 1h | 2212 | 35.80% | **+230.27%** | **50.08%** | 1.36 | 60mo (98.1%) |
+| bollinger | 4h | 595 | 33.95% | -0.35% | 39.76% | 1.34 | 60mo (96.4%) |
+| three_golden | 1h | 3471 | 34.17% | +52.19% | 61.34% | 1.34 | 60mo (98.1%) |
+| three_golden | 4h | 818 | 33.13% | -13.92% | 33.93% | 1.33 | 60mo (96.4%) |
+| triple_ema_stoch_rsi | 1h | 1684 | 34.74% | +61.37% | 31.23% | 1.35 | 60mo (98.1%) |
+| triple_ema_stoch_rsi | 4h | 397 | 34.51% | +9.32% | 21.23% | 1.35 | 60mo (96.4%) |
+| elliott_wave | 1h | 2299 | 18.44% | -78.97% | 88.13% | 1.63 | 60mo (98.1%) |
+| elliott_wave | 4h | 535 | 17.20% | -58.63% | 72.59% | 1.54 | 60mo (96.4%) |
+| combined | 1h | 163 | 34.97% | +6.37% | 14.31% | 1.35 | **24mo only** (60mo/36mo attempts failed — see note) |
+| combined | 4h | 109 | 32.11% | -5.01% | 16.24% | 1.32 | 60mo (96.4%) |
+
+**Note on `combined`/1h:** the fallback chain (60mo → 36mo → 24mo) triggered — the 60- and 36-month attempts didn't return usable coverage, likely a job timeout given how compute-heavy `combined` is per-candle over that many hourly bars. Only the 24-month result is usable, and it is **not directly comparable** to every other row in this table (less than half the history, different date range). Should be re-run with a longer per-job timeout budget before treating its numbers as equivalent evidence to the rest.
+
+**Read across all 9 strategies tested at this depth (3 from the round above + these 6):**
+- `rsi` and `elliott_wave` are unambiguously bad — near-total account wipeout (max DD 88-100%) on both timeframes, low win rates (17-27%). Not worth reconsidering.
+- `bollinger`/1h and `three_golden`/1h show large positive headline returns (+230%, +52%) but paired with equally large drawdowns (50%, 61%) — both are also strongly timeframe-inconsistent (their own 4h results are flat-to-negative). This is the same "looks great, isn't robust" pattern already seen with `supertrend`'s 6-month result — high variance masquerading as edge, not something to deploy as-is.
+- `triple_ema_stoch_rsi` is the one strategy positive on **both** timeframes (1h +61.37%, 4h +9.32%), with the most moderate drawdown among the positive-return strategies (31.23% / 21.23%). Still well above the spec's 8% ceiling, but the most internally consistent result of the six — worth a closer look before dismissing.
+- `combined`/1h's positive result (+6.37%, 14.31% DD — the tightest drawdown of any positive result in this whole log) is the closest to the spec's bar of anything tested, but is on incomplete 24-month data and needs re-running properly before it means anything.
+
+**Overall conclusion across all 9 strategies now tested with full multi-year rigor: none clear the deployability bar (max drawdown <8%).** Combined with the round-above finding that the already-deployed `supertrend` also fails at this depth, the honest state of the project is: nothing currently implemented in `stock-soup` has demonstrated durable, risk-controlled edge over a realistic multi-year, multi-regime test. See `docs/execution-log.md` for what this means going forward.
+
+---

@@ -123,3 +123,19 @@ Market regime context (`docs/research-log.md`, 2026-08-16): BTC has been in a ch
 **Confidence:** high that the specific 6-month-based case for supertrend is no longer supported. Not yet resolved: whether any of the 9 strategies in this codebase has durable multi-year edge, or whether a different approach entirely is needed — open questions for the next round.
 
 ---
+
+## 2026-08-17 — Open question resolved: none of the 9 strategies clear the bar
+
+**Trigger:** direct follow-up to the entry above. The remaining 6 strategies (`rsi`, `bollinger`, `three_golden`, `triple_ema_stoch_rsi`, `elliott_wave`, `combined`) were run through the same 5-year/multi-timeframe test. Full numbers: `docs/backtest-log.md`, `2026-08-17 — 5-year regime validation, round 2`.
+
+**Finding:** the open question is resolved, and not in the project's favor. Across all 9 strategies now tested at this depth, **none** show both a positive return and drawdown under the spec's 8% ceiling over the full multi-year history. `rsi` and `elliott_wave` are severely broken (85-100% max drawdown — effective account wipeout). `bollinger` and `three_golden` show large headline returns on 1h but with matching large drawdowns (50%, 61%) and are flat-to-negative on 4h — the same "looks great on one slice, not robust" pattern that fooled the original `supertrend` decision. `triple_ema_stoch_rsi` is the most internally consistent (positive on both timeframes) but still far above the 8% ceiling. `combined`/1h's result is the closest to the bar (14.31% DD) but ran on incomplete data and needs a proper re-run before it counts as evidence.
+
+**What this means:** this isn't a bug to fix or a parameter to tune — it's a structural finding. None of the 9 indicator-based strategies currently in `backend/app/modules/bot/strategies/` have demonstrated durable, risk-controlled edge in BTCUSDT over a realistic 5-year, multi-regime test. Separately, Poom had me look into published research on this: peer-reviewed academic work on crypto **time-series momentum** (position based on the sign of trailing 1-3 month return, rebalanced periodically — not per-candle indicator crossovers) shows real, replicated positive results (one study: 31.96% annualized across 8 major cryptocurrencies, 2020-2025). That's a structurally different strategy shape than anything in this codebase — all 9 current strategies trigger off single-candle indicator conditions at 1h/4h, closer to retail technical analysis than to what the literature actually validates.
+
+**Action taken:** none. `/bot/config` unchanged (`active_strategy: supertrend`, still suspended — that setting is now known to be evidence-free, not evidence-based, but changing it to another equally-unvalidated strategy wouldn't fix anything). This is a decision point for Poom, not something to resolve unilaterally.
+
+**Recommendation for next step:** don't tune the existing 9 strategies further — the evidence says the whole family doesn't have edge here, not that any one of them is close. Consider building a genuinely new strategy type grounded in the time-series-momentum research above (longer lookback, periodic rebalance, not per-candle triggers) as the next real candidate, rather than continuing to search within a strategy family that's now been fairly thoroughly ruled out.
+
+**Confidence:** high on the negative finding (9 strategies, consistent methodology, real multi-year data, several independent bugs already found and fixed along the way rather than papered over). Low confidence, so far, on any specific path forward — that's an open design question, not yet backtested.
+
+---
