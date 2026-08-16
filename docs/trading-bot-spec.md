@@ -119,6 +119,21 @@ The kill switch: if total portfolio drops 10% from its high-water mark, the bot:
 - Key params: `threshold` (default 0.6, fixed from 0.3 on 2026-08-16 — see below), `conflict_max` (default 0.15)
 - **BUGFIX (2026-08-16):** default `threshold` was 0.3, below a single sub-strategy's neutral default weight (0.5). That let any ONE sub-strategy fire the combined signal alone with zero opposition, defeating the confluence design — backtest (BTCUSDT/1h/6mo) showed 1232 trades, -59% PnL, 76% drawdown. Raised threshold to 0.6 so at least two neutral-weight strategies must agree (or one strategy with a proven win-rate weight ≥0.6 can act alone). See `docs/backtest-log.md` Round 3 for the validation backtest. `combined` was NOT applied to the bot config — this is a code-level default fix only, still evidence-gathering.
 
+### 7. Time-Series Momentum ✓ IMPLEMENTED (2026-08-17), backtester-only so far
+- After all 9 strategies above were run through a full 5-year/multi-timeframe backtest (`docs/backtest-log.md`, 2026-08-17), none cleared the live-readiness bar — several were severely broken (near-total drawdown), others showed large returns paired with equally large, timeframe-inconsistent drawdowns (the same "looks great on one slice" trap as the original `supertrend` decision). This strategy is a structurally different approach, grounded in peer-reviewed academic research on crypto time-series momentum rather than retail technical-indicator patterns (see `docs/execution-log.md`, 2026-08-17 entry, for the research summary and citations).
+- Signal: trailing N-day return (default 90d) sign, evaluated only at periodic rebalance points (default every 7 days) — deliberately low-frequency, unlike every other strategy here which reacts to single-candle conditions.
+- Requires **daily ("1d") candles** — this is the one strategy in this file that needs a different timeframe than 15m/1h/4h to make sense.
+- Stop: wide, multi-day ATR-based (default 3x ATR). Take-profit: deliberately far (default 8x ATR) so exits are dominated by trend invalidation, not an early profit cap — "let winners run."
+- File: `backend/app/modules/bot/strategies/time_series_momentum.py`
+- **Adaptation caveat:** this codebase's shared backtester/executor only exits a position via stop-loss or take-profit, never on "the strategy's signal changed." A textbook TSMOM implementation flips a single position every rebalance; that isn't available here without a larger shared change to `run_backtest`/`executor.py`. This implementation approximates it (wide stop, far TP) rather than replicating it exactly — read backtest results with that in mind.
+- **Not yet wired into the live executor** (`backend/app/tasks/bot_tasks.py`) — that file hardcodes a single 15m timeframe for every strategy's candle fetch, which doesn't work for this one. Registered in the backtester only for now (`/lab/backtest`, `/lab/compare`). Live wiring is a separate follow-up if backtesting shows this is worth deploying.
+
+---
+
+## Known gap: live executor strategy dispatch is incomplete
+
+`backend/app/tasks/bot_tasks.py`'s `_check_symbol` only dispatches to `rsi`, `macd`, `fibonacci`, `bollinger`, `elliott_wave`, `combined` — **`supertrend`, `three_golden`, and `triple_ema_stoch_rsi` are missing** from this live/testnet dispatch table even though they exist in the backtester's `_STRATEGIES` list and `_get_signal` dispatcher. Found 2026-08-17 while `supertrend` was still set as `/bot/config`'s `active_strategy` (from a decision later reversed on backtest evidence, see `docs/execution-log.md`) — if the bot had been resumed with that config, `_check_symbol` would have hit its `else: logger.warning(...); return` branch every cycle and silently done nothing, not errored loudly. Not fixed yet since none of these three are currently being deployed, but worth closing this gap (mirror the backtester's dispatch table) before ever setting `active_strategy` to one of these three again.
+
 ---
 
 ## Binance API setup
