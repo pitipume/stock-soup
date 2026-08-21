@@ -422,3 +422,32 @@ Job IDs: 1h `f1483d36-c3ed-4765-acb4-9de57cb6e47b` (2026-03-02 -> 2026-08-16), 1
 **Recommendation:** this is the first strategy in the project worth investing further engineering time in — specifically, resolving the position-stacking confound (see caveat above) before drawing a final conclusion, since 8.8-9.2% is close enough to 8% that removing that confound could plausibly move the result either direction. That work needs Poom's review before starting (shared code, decision-critical).
 
 ---
+
+## 2026-08-21 — close_on_reversal implemented (opt-in), tested against time_series_momentum: doesn't resolve the drawdown ceiling, and surfaces a bigger robustness problem
+
+**Trigger:** direct follow-up to the 2026-08-17 overnight entries above, per Poom's go-ahead to implement "close on signal reversal" if it could be done as an isolated, opt-in change.
+
+**Implementation:** added `close_on_reversal: bool = False` as a new trailing parameter to `run_backtest` in `backend/app/modules/lab/backtester.py`. Default is `False` and both existing callers (`run_lab_backtest`, `run_lab_compare` in `backend/app/tasks/lab_tasks.py`) call it without this argument — they are structurally unaffected. When `True`, an open position is closed at the current candle's close the moment the strategy emits an opposite-direction signal (`close_reason: "signal_reversal"`), instead of only ever exiting via SL/TP/end-of-backtest. Verified via a direct regression script (`supertrend`/BTCUSDT/1h/6mo) that default-arg and explicit `close_on_reversal=False` produce byte-for-byte identical `BacktestResult` objects (77 trades, same P&L, same drawdown to the decimal) — the refactor into a shared `_close_position` helper (done to avoid duplicating the SL/TP/reversal/end-of-backtest pnl math three times) does not change any existing strategy's numbers.
+
+**Result — `time_series_momentum`, canonical params (`lookback_days=365, rebalance_days=30`), 60mo, 1d, close_on_reversal OFF vs ON, same fetched candle set per symbol (so this is an apples-to-apples isolated comparison):**
+
+| Symbol | Variant | Trades | Win% | Total PnL% | Max DD% |
+|---|---|---|---|---|---|
+| BTCUSDT | OFF (stacking) | 45 | 31.11% | +0.56% | 8.59% |
+| BTCUSDT | ON (reversal-close) | 45 | 31.11% | +1.37% | **9.77%** |
+| ETHUSDT | OFF | 45 | 22.22% | -10.67% | 13.87% |
+| ETHUSDT | ON | 47 | 25.53% | -7.17% | 13.72% |
+| SOLUSDT | OFF | 43 | 30.23% | +0.38% | 10.93% |
+| SOLUSDT | ON | 43 | 32.56% | -0.44% | 10.93% |
+
+**Read:** close_on_reversal does **not** reliably reduce drawdown — it made BTCUSDT's worse (8.59% → 9.77%), left SOLUSDT's unchanged, and only marginally improved ETHUSDT's (13.87% → 13.72%, still nowhere near the 8% bar). PnL direction was also mixed (BTC and ETH improved, SOL flipped from a small gain to a small loss). This directly answers the open question from 2026-08-17 ("resolving that confound could plausibly move the result either direction") — it moved, and not in a way that helps the deployability case. **Recommendation: do not adopt close_on_reversal as the default for time_series_momentum** based on this evidence; the position-stacking approximation was not, in fact, the thing holding this strategy back from clearing the 8% ceiling.
+
+**Second, more important finding (unplanned):** the OFF/baseline numbers above (BTCUSDT +0.56% PnL, 8.59% DD) are **drastically different** from the 2026-08-17 log entry for the identical strategy, identical canonical params, same symbol (BTCUSDT +11.51% PnL, 9.20% DD) — despite both being a "60-month" `/lab/backtest` window. The only difference is *when* the window was fetched: `fetch_candles` anchors to `datetime.now()`, so a request made 2026-08-21 vs. 2026-08-17 rolls the entire 60-month window forward by ~4 calendar days. Because this strategy's rebalance boundaries are indexed from the start of the fetched candle array (`(n - 1) % rebalance_days`), not calendar-aligned, a 4-day shift in window start changes *which* days are rebalance days for the strategy's entire 5-year run — and with only ~44-45 total trades over 5 years, that's enough to substantially change which trades get taken at all. **This means time_series_momentum's headline result is sensitive to an arbitrary data-fetch-timing artifact, not just to genuine regime differences across historical windows** — a materially bigger robustness concern than "one 5-year window" framing in the prior entries conveyed. A strategy whose backtest result swings this much from a few days' difference in when you happened to run the query is fragile evidence, even before touching the drawdown-ceiling question.
+
+**Revised overall read on time_series_momentum:** still the most promising strategy tested in this project (no other strategy has come remotely close to positive PnL + single-digit-teens drawdown on 3 symbols), but the 2026-08-17 "strongest result in the project" framing should be read with real skepticism now — some meaningful fraction of that result's apparent strength may be a window-anchor artifact rather than durable edge. Before any further investment: (1) rebalance boundaries should probably be calendar-aligned (e.g. actual day-of-month) rather than index-aligned, to remove this specific artifact; (2) results should be checked across several deliberately-shifted window starts (not just "now" vs. "4 days ago" — a wider spread) to see how much this specific instability matters in practice. Neither of those was attempted here — flagging as the next concrete step rather than a decision made unilaterally, since it's more scope than "add one opt-in flag."
+
+**Action taken:** code change only (`backend/app/modules/lab/backtester.py`), regression-verified, no `/bot/config` change. Bot remains suspended on `supertrend`.
+
+**Confidence:** high on both the "close_on_reversal doesn't help" finding and the regression-safety of the code change (both directly measured). High confidence the window-anchor sensitivity is real (directly reproduced, mechanism identified in the code); not yet quantified how much of the original 2026-08-17 headline number it explains versus genuine params-work — that needs the follow-up described above.
+
+---

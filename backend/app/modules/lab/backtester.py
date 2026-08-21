@@ -108,6 +108,28 @@ def _unrealized(pos: dict, price: float, leverage: int) -> float:
     return (pos["entry_price"] - price) * pos["size"] * leverage
 
 
+def _close_position(pos: dict, exit_price: float, exit_time: int, leverage: int, close_reason: str) -> tuple[float, BacktestTrade]:
+    """Shared close accounting so SL/TP, signal-reversal, and end-of-backtest exits compute pnl identically."""
+    if pos["side"] == "long":
+        pnl = (exit_price - pos["entry_price"]) * pos["size"] * leverage
+    else:
+        pnl = (pos["entry_price"] - exit_price) * pos["size"] * leverage
+    pnl_pct = pnl / (pos["entry_price"] * pos["size"]) * 100
+    trade = BacktestTrade(
+        side=pos["side"],
+        entry_price=round(pos["entry_price"], 4),
+        exit_price=round(exit_price, 4),
+        stop_loss=round(pos["stop_loss"], 4),
+        pnl_usdt=round(pnl, 4),
+        pnl_pct=round(pnl_pct, 4),
+        outcome="win" if pnl > 0 else ("loss" if pnl < 0 else "breakeven"),
+        close_reason=close_reason,
+        entry_time=pos["entry_time"],
+        exit_time=exit_time,
+    )
+    return pnl, trade
+
+
 def run_backtest(
     candles: list[dict],
     symbol: str,
@@ -118,7 +140,26 @@ def run_backtest(
     risk_pct: float,
     timeframe: str,
     months: int,
+    close_on_reversal: bool = False,
 ) -> BacktestResult:
+    """
+    close_on_reversal (default False, OPT-IN ONLY): when True, an open position
+    is closed at the current candle's close price the moment the strategy emits
+    a signal in the opposite direction, instead of only ever exiting via SL/TP/
+    end-of-backtest. This resolves the "positions stack up because the harness
+    never proactively closes on a fresh opposite signal" limitation documented
+    in time_series_momentum.py and docs/backtest-log.md (2026-08-17 overnight
+    entries).
+
+    Deliberately NOT the default: every one of the other 9 strategies' results
+    logged in docs/backtest-log.md was produced without this behavior, and
+    changing the default would silently invalidate that entire evidence trail.
+    Both existing callers (run_lab_backtest, run_lab_compare in
+    backend/app/tasks/lab_tasks.py) call this positionally/by-keyword without
+    this argument, so they are unaffected and continue to reproduce prior
+    results byte-for-byte. This flag is for ad hoc validation runs only, until/
+    unless Poom decides it should become a real per-strategy option in the API.
+    """
     balance = initial_balance
     open_positions: list[dict] = []
     trades: list[BacktestTrade] = []
@@ -148,33 +189,31 @@ def run_backtest(
             if sl_hit or tp_hit:
                 # If both hit same candle, take the worse outcome (SL)
                 exit_price = pos["stop_loss"] if sl_hit else pos["take_profit"]
-                if pos["side"] == "long":
-                    pnl = (exit_price - pos["entry_price"]) * pos["size"] * leverage
-                else:
-                    pnl = (pos["entry_price"] - exit_price) * pos["size"] * leverage
-
-                balance += pnl
-                pnl_pct = pnl / (pos["entry_price"] * pos["size"]) * 100
-                outcome = "win" if pnl > 0 else ("loss" if pnl < 0 else "breakeven")
                 close_reason = "stop_loss" if sl_hit else "take_profit"
-
-                trades.append(BacktestTrade(
-                    side=pos["side"],
-                    entry_price=round(pos["entry_price"], 4),
-                    exit_price=round(exit_price, 4),
-                    stop_loss=round(pos["stop_loss"], 4),
-                    pnl_usdt=round(pnl, 4),
-                    pnl_pct=round(pnl_pct, 4),
-                    outcome=outcome,
-                    close_reason=close_reason,
-                    entry_time=pos["entry_time"],
-                    exit_time=ts,
-                ))
+                pnl, trade = _close_position(pos, exit_price, ts, leverage, close_reason)
+                balance += pnl
+                trades.append(trade)
                 closed_this_candle = True
             else:
                 still_open.append(pos)
 
         open_positions = still_open
+
+        # ── Optional: close on signal reversal (opt-in only, see docstring) ───
+        cached_signal = None
+        if close_on_reversal and open_positions and balance > 0:
+            cached_signal = _get_signal(candles[: i + 1], strategy, params)
+            if cached_signal and cached_signal.action != "none":
+                still_open2 = []
+                for pos in open_positions:
+                    if pos["side"] != cached_signal.action:
+                        pnl, trade = _close_position(pos, close, ts, leverage, "signal_reversal")
+                        balance += pnl
+                        trades.append(trade)
+                        closed_this_candle = True
+                    else:
+                        still_open2.append(pos)
+                open_positions = still_open2
 
         # ── Equity snapshot after any close ───────────────────────────────────
         if closed_this_candle or i % 24 == 0:
@@ -188,7 +227,13 @@ def run_backtest(
 
         # ── Get strategy signal ───────────────────────────────────────────────
         if len(open_positions) < _MAX_CONCURRENT and balance > 0:
-            signal = _get_signal(candles[: i + 1], strategy, params)
+            if close_on_reversal:
+                # Reuse the signal already computed above for the reversal check
+                # (when positions were open) to avoid a second, potentially
+                # inconsistent evaluate() call on the same candle.
+                signal = cached_signal if cached_signal is not None else _get_signal(candles[: i + 1], strategy, params)
+            else:
+                signal = _get_signal(candles[: i + 1], strategy, params)
             if signal and signal.action != "none":
                 stop_dist = abs(signal.entry_price - signal.stop_loss)
                 if stop_dist > 0:
@@ -208,24 +253,9 @@ def run_backtest(
     last_close = candles[-1]["close"]
     last_ts = candles[-1]["open_time"]
     for pos in open_positions:
-        if pos["side"] == "long":
-            pnl = (last_close - pos["entry_price"]) * pos["size"] * leverage
-        else:
-            pnl = (pos["entry_price"] - last_close) * pos["size"] * leverage
+        pnl, trade = _close_position(pos, last_close, last_ts, leverage, "end_of_backtest")
         balance += pnl
-        pnl_pct = pnl / (pos["entry_price"] * pos["size"]) * 100
-        trades.append(BacktestTrade(
-            side=pos["side"],
-            entry_price=round(pos["entry_price"], 4),
-            exit_price=round(last_close, 4),
-            stop_loss=round(pos["stop_loss"], 4),
-            pnl_usdt=round(pnl, 4),
-            pnl_pct=round(pnl_pct, 4),
-            outcome="win" if pnl > 0 else ("loss" if pnl < 0 else "breakeven"),
-            close_reason="end_of_backtest",
-            entry_time=pos["entry_time"],
-            exit_time=last_ts,
-        ))
+        trades.append(trade)
 
     equity_curve.append(round(balance, 2))
     equity_times.append(last_ts)

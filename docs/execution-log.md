@@ -155,3 +155,21 @@ Market regime context (`docs/research-log.md`, 2026-08-16): BTC has been in a ch
 **Confidence:** medium — genuinely the best evidence seen in this project (consistency across 3 uncorrelated-ish assets using an untuned, literature-standard parameter set is a meaningfully different quality of signal than anything else tested), but capped by the unresolved architecture confound and by this still being one historical window.
 
 ---
+
+## 2026-08-21 — close_on_reversal implemented and tested: no config change, time_series_momentum's evidentiary basis weakened
+
+**Trigger:** direct follow-up to the 2026-08-17 overnight entry above. Poom gave a go-ahead to implement "close on signal reversal" if it could be done as an isolated, opt-in change that doesn't silently alter other strategies' already-logged results.
+
+**What was done:** implemented `close_on_reversal` as a new opt-in parameter (default `False`) on the shared `run_backtest`, regression-verified byte-for-byte identical output for existing callers/strategies, then re-ran `time_series_momentum` (canonical params) with it on. Full methodology and numbers: `docs/backtest-log.md`, 2026-08-21 entry.
+
+**Finding:** close_on_reversal does not resolve the drawdown-ceiling problem — it made BTCUSDT's drawdown worse (8.59% → 9.77%), left SOLUSDT's unchanged, and only marginally helped ETHUSDT's (still ~14%, nowhere near the 8% bar). The position-stacking approximation flagged since 2026-08-17 was **not**, in fact, the main thing holding this strategy back from the spec's ceiling.
+
+**Separately, and more consequentially:** re-running the exact same strategy/params/symbol 4 calendar days after the original 2026-08-17 test produced a drastically different baseline result for BTCUSDT (+0.56% PnL / 8.59% DD now vs. +11.51% PnL / 9.20% DD then) — traced to the backtester's rebalance boundaries being indexed from the start of the fetched candle window rather than calendar-aligned, so a small shift in *when the backtest is run* shifts *which days count as rebalance days* for this strategy's entire 5-year simulation. This is a real robustness weakness in the current implementation, independent of the close_on_reversal question, and it materially tempers the 2026-08-17 "strongest result in the project" framing — some real portion of that headline number may be a data-fetch-timing artifact rather than durable edge.
+
+**Action taken:** code change only, regression-verified. **No `/bot/config` change.** `active_strategy` remains `supertrend`, bot remains suspended — unchanged from every prior entry in this log.
+
+**Recommendation for next step:** don't invest further in close_on_reversal for this strategy — it's evidence-tested and doesn't help. Before trusting time_series_momentum further at all, the rebalance-boundary calendar-alignment issue should be fixed and the result re-checked across multiple deliberately-shifted window starts. That's more scope than this round covered and needs to be a deliberate next step, not something to fold into general "continue" instructions.
+
+**Confidence:** high that close_on_reversal isn't the fix (directly measured, controlled comparison). High confidence the window-anchor sensitivity is real and the mechanism is understood; not yet quantified how much it explains of the original headline number.
+
+---
